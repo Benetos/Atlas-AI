@@ -124,7 +124,15 @@ Exit criteria:
 
 ### Phase 5 — app-driven feature projections
 
-Candidate projections:
+Status: **in progress for companion app v1**.
+
+First app screens are specified in [APP.md](APP.md): Atlas chat home, entity
+and recipe detail, Library browse, local Saved, and Info. The iOS client reads
+a pinned SQLite snapshot delivered as an essential Background Asset. No new
+typed feature tables until a Library screen needs them. The lossless
+`nms_content_records` payload remains the compatibility fallback.
+
+Candidate projections after v1:
 
 - Fish, bait, habitats, conditions, and catch requirements.
 - Expeditions, milestones, rewards, and season metadata.
@@ -161,8 +169,9 @@ Exit criteria:
 4. ~~Transform the pinned source and atomically load the Atlas-AI project.~~
 5. ~~Reconcile counts, broken references, search behavior, and Data API access.~~
 6. Install the current Supabase CLI for local development and migration diffing.
-7. Add the asset upload only after the publication gate is approved.
-8. Promote the verified flow into a manually dispatched GitHub Action.
+7. Ship the iOS companion against the packed SQLite snapshot ([APP.md](APP.md)).
+8. Add the asset upload only after the publication gate is approved.
+9. Promote the verified import flow into a manually dispatched GitHub Action.
 
 ## Definition of done for the first production import
 

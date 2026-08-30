@@ -1,0 +1,12 @@
+{
+  "assetPackID": "nms-reference",
+  "downloadPolicy": {
+    "essential": {
+      "installationEventTypes": ["firstInstallation"]
+    }
+  },
+  "fileSelectors": [
+    { "file": "nms-reference.sqlite" }
+  ],
+  "platforms": ["iOS", "iPadOS", "macOS"]
+}
