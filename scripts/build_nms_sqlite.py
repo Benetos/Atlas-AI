@@ -378,7 +378,7 @@ def insert_content(connection: sqlite3.Connection, rows: Iterable[dict[str, Any]
     return count
 
 
-def build_pack(import_dir: Path, output_dir: Path) -> int:
+def build_pack(import_dir: Path, output_dir: Path, *, quiet: bool = False) -> int:
     import_dir = import_dir.resolve()
     output_dir = output_dir.resolve()
     manifest = verify_transform_manifest(import_dir)
@@ -461,11 +461,12 @@ def build_pack(import_dir: Path, output_dir: Path) -> int:
         json.dumps(sidecar, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    print(f"SQLite pack: {sqlite_path}")
-    print(f"Source commit: {source['commit_sha']}")
-    for key, value in counts.items():
-        print(f"  {key}: {value}")
-    print(f"Manifest: {sidecar_path}")
+    if not quiet:
+        print(f"SQLite pack: {sqlite_path}")
+        print(f"Source commit: {source['commit_sha']}")
+        for key, value in counts.items():
+            print(f"  {key}: {value}")
+        print(f"Manifest: {sidecar_path}")
     return 0
 
 

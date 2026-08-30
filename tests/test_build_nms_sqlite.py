@@ -309,8 +309,10 @@ def fixture_import_dir(root: Path) -> Path:
         "assets.csv",
     ):
         path = import_dir / name
+        with path.open(encoding="utf-8") as handle:
+            row_count = sum(1 for _ in handle) - 1
         outputs[name] = {
-            "rows": sum(1 for _ in path.open(encoding="utf-8")) - 1,
+            "rows": row_count,
             "bytes": path.stat().st_size,
             "sha256": sha256_bytes(path.read_bytes()),
         }
@@ -350,7 +352,7 @@ class BuildNmsSqliteTests(unittest.TestCase):
         self.temp.cleanup()
 
     def build(self) -> Path:
-        result = build_nms_sqlite.build_pack(self.import_dir, self.output_dir)
+        result = build_nms_sqlite.build_pack(self.import_dir, self.output_dir, quiet=True)
         self.assertEqual(result, 0)
         return self.output_dir / "nms-reference.sqlite"
 
@@ -358,7 +360,7 @@ class BuildNmsSqliteTests(unittest.TestCase):
         entities = self.import_dir / "entities.csv"
         entities.write_text(entities.read_text(encoding="utf-8") + "\n", encoding="utf-8")
         with self.assertRaises(ValueError):
-            build_nms_sqlite.build_pack(self.import_dir, self.output_dir)
+            build_nms_sqlite.build_pack(self.import_dir, self.output_dir, quiet=True)
 
     def test_pack_contains_canonical_tables_not_private_source(self):
         sqlite_path = self.build()
