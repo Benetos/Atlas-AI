@@ -4,6 +4,7 @@ enum LiveAtlasError: LocalizedError {
     case notConfigured
     case http(Int)
     case empty
+    case invalidQuery
 
     var errorDescription: String? {
         switch self {
@@ -13,6 +14,8 @@ enum LiveAtlasError: LocalizedError {
             return "Live Atlas request failed (\(code))."
         case .empty:
             return "Live Atlas returned no rows."
+        case .invalidQuery:
+            return "Live Atlas search had no usable characters."
         }
     }
 }
@@ -30,9 +33,12 @@ struct LiveAtlasClient: Sendable {
     }
 
     func sourceCommitSHA() async throws -> String {
-        let rows: [LiveEntity] = try await get(
+        let rows: [LiveRevision] = try await get(
             path: "nms_entities",
-            query: "select=source_commit_sha&limit=1"
+            queryItems: [
+                URLQueryItem(name: "select", value: "source_commit_sha"),
+                URLQueryItem(name: "limit", value: "1"),
+            ]
         )
         guard let sha = rows.first?.sourceCommitSHA, !sha.isEmpty else {
             throw LiveAtlasError.empty
@@ -41,32 +47,50 @@ struct LiveAtlasClient: Sendable {
     }
 
     func searchEntities(query: String, type: String?, limit: Int = 20) async throws -> [Entity] {
-        var filters = [
-            "select=entity_type,game_id,name,display_name,subtitle,description,category,subcategory,rarity,legality,base_value,color_r,color_g,color_b,source_dataset,source_commit_sha",
-            "or=(display_name.ilike.*\(Self.sanitize(query))*,name.ilike.*\(Self.sanitize(query))*,game_id.ilike.*\(Self.sanitize(query))*)",
-            "limit=\(limit)",
+        let pattern = Self.ilikePattern(query)
+        guard let pattern else { throw LiveAtlasError.invalidQuery }
+        var items = [
+            URLQueryItem(
+                name: "select",
+                value: "entity_type,game_id,name,display_name,subtitle,description,category,subcategory,rarity,legality,base_value,color_r,color_g,color_b,source_dataset,source_commit_sha"
+            ),
+            URLQueryItem(
+                name: "or",
+                value: "(display_name.ilike.\(pattern),name.ilike.\(pattern),game_id.ilike.\(pattern))"
+            ),
+            URLQueryItem(name: "limit", value: String(limit)),
         ]
-        if let type {
-            filters.append("entity_type=eq.\(type)")
+        if let type, let safeType = Self.identifier(type) {
+            items.append(URLQueryItem(name: "entity_type", value: "eq.\(safeType)"))
         }
-        let rows: [LiveEntity] = try await get(path: "nms_entities", query: filters.joined(separator: "&"))
+        let rows: [LiveEntity] = try await get(path: "nms_entities", queryItems: items)
         return rows.map(\.asEntity)
     }
 
     func recipes(outputType: String, outputID: String) async throws -> [Recipe] {
+        guard let type = Self.identifier(outputType), let id = Self.identifier(outputID) else {
+            throw LiveAtlasError.invalidQuery
+        }
         let rows: [LiveRecipe] = try await get(
             path: "nms_recipes",
-            query: "select=recipe_id,recipe_kind,output_entity_type,output_game_id,output_amount,time_seconds,recipe_type,recipe_name,source_ordinal,source_commit_sha&output_entity_type=eq.\(outputType)&output_game_id=eq.\(outputID)"
+            queryItems: [
+                URLQueryItem(
+                    name: "select",
+                    value: "recipe_id,recipe_kind,output_entity_type,output_game_id,output_amount,time_seconds,recipe_type,recipe_name,source_ordinal,source_commit_sha"
+                ),
+                URLQueryItem(name: "output_entity_type", value: "eq.\(type)"),
+                URLQueryItem(name: "output_game_id", value: "eq.\(id)"),
+            ]
         )
         return rows.map(\.asRecipe)
     }
 
-    private func get<T: Decodable>(path: String, query: String) async throws -> T {
+    private func get<T: Decodable>(path: String, queryItems: [URLQueryItem]) async throws -> T {
         var components = URLComponents(
             url: baseURL.appending(path: "rest/v1/\(path)"),
             resolvingAgainstBaseURL: false
         )
-        components?.percentEncodedQuery = query
+        components?.queryItems = queryItems
         guard let url = components?.url else { throw LiveAtlasError.notConfigured }
         var request = URLRequest(url: url)
         request.setValue(anonKey, forHTTPHeaderField: "apikey")
@@ -78,10 +102,26 @@ struct LiveAtlasClient: Sendable {
         return try JSONDecoder().decode(T.self, from: data)
     }
 
-    private static func sanitize(_ value: String) -> String {
-        value.replacingOccurrences(of: ",", with: " ")
-            .replacingOccurrences(of: "&", with: " ")
-            .replacingOccurrences(of: "*", with: " ")
+    /// Builds a PostgREST `ilike` pattern from letters, numbers, and underscores only.
+    static func ilikePattern(_ value: String) -> String? {
+        let tokens = value.lowercased().split { character in
+            !character.isLetter && !character.isNumber && character != "_"
+        }
+        guard !tokens.isEmpty else { return nil }
+        return "*" + tokens.joined(separator: "*") + "*"
+    }
+
+    static func identifier(_ value: String) -> String? {
+        let filtered = value.filter { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" || $0 == ":" }
+        return filtered.isEmpty ? nil : filtered
+    }
+}
+
+private struct LiveRevision: Decodable {
+    var sourceCommitSHA: String?
+
+    enum CodingKeys: String, CodingKey {
+        case sourceCommitSHA = "source_commit_sha"
     }
 }
 

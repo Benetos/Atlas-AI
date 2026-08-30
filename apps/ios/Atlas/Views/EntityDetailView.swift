@@ -38,7 +38,7 @@ struct EntityDetailView: View {
                         Section("Description") { Text(description) }
                     }
                     if !produced.isEmpty {
-                        Section("Crafted from") {
+                        Section("How to make") {
                             ForEach(produced) { recipe in
                                 NavigationLink(value: AtlasRoute.recipe(id: recipe.recipeID)) {
                                     RecipeCardView(recipe: recipe)

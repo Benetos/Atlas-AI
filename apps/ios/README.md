@@ -29,8 +29,13 @@ cp build/nms-sqlite/nms-reference.sqlite \
 Open `apps/ios/Atlas.xcodeproj` and run the Atlas target.
 
 Copy `Config/Secrets.xcconfig.example` to `Config/Secrets.xcconfig` and add
-the publishable Supabase key only if you want live Atlas search. The app
-runs fully offline without it.
+the publishable Supabase key only if you want live Atlas search. Debug and
+Release xcconfigs `#include?` that file, so the example copy is what actually
+loads the key. The app runs fully offline without it.
+
+Pack lookup prefers the app-group / Application Support copy (the hosted
+Background Asset) over the bundled preview SQLite, so a Release build can keep
+the preview file in the target without shadowing the full pack.
 
 ## Release
 
