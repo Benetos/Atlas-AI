@@ -112,6 +112,27 @@ Fix all security findings and relevant performance findings.
 
 ## 4. Load into temporary staging tables
 
+Atlas-AI now includes a deterministic batch generator for environments where a
+managed SQL executor is used instead of a direct `psql` session:
+
+```bash
+python3 scripts/prepare_nms_import.py \
+  --import-dir build/nms-import \
+  --output-dir build/nms-sql
+```
+
+It verifies every manifest hash before emitting SQL, derives a stable import-run
+UUID from the source repository and commit, and creates size-bounded upsert
+batches. Generated files must be executed in lexical order. All batches except
+the last write only to `nms_private.source_records` and
+`nms_private.staged_records`. The final file calls
+`nms_private.activate_import(...)`, which validates counts and commit identity
+again before publishing everything in one transaction.
+
+For routine automation, a protected direct Postgres connection and `COPY`
+remain the preferred high-throughput path. The generated batches are the
+resumable fallback and the path used for the initial connected import.
+
 Production-scale loads should use Postgres `COPY`. The exact `psql` command
 depends on the environment and connection string, but the pattern is:
 

@@ -19,6 +19,7 @@ into Supabase.
 - [Canonical data contract](docs/DATA_CONTRACT.md)
 - [Supabase architecture and upload runbook](docs/SUPABASE_INGESTION.md)
 - [Supabase deployment record](docs/SUPABASE_DEPLOYMENT.md)
+- [Initial import verification](docs/INITIAL_IMPORT.md)
 - [Baseline validation report](docs/BASELINE_VALIDATION.md)
 - [Database schema](supabase/schema/nms_reference_schema.sql)
 - [Generated application database types](supabase/types/database.ts)
@@ -50,6 +51,18 @@ python3 scripts/transform_nms.py \
 The transformer creates CSV files for bulk `COPY`, a lossless raw-record file,
 an asset manifest, and `manifest.json` containing the resolved source commit,
 input hashes, record counts, validation findings, and output hashes.
+
+Verify those hashes and produce deterministic, resumable SQL batches:
+
+```bash
+python3 scripts/prepare_nms_import.py \
+  --import-dir build/nms-import \
+  --output-dir build/nms-sql
+```
+
+The generated plan remains ignored under `build/`. It stages data only in
+`nms_private`; the final batch validates all counts and atomically promotes the
+new revision to the read-only public tables.
 
 Preview the selective asset plan without downloading image blobs:
 

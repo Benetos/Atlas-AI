@@ -8,6 +8,7 @@
 - Region: `us-east-2`
 - PostgreSQL: 17
 - Initial migration: `20260830043257_nms_reference_schema`
+- Import pipeline migration: `20260830044648_nms_import_pipeline`
 - Migration applied: 2026-08-29 (America/Chicago)
 
 The project reference and API URL are public identifiers, not credentials.
@@ -19,6 +20,7 @@ The initial migration created:
 
 - `nms_private.import_runs`
 - `nms_private.source_records`
+- `nms_private.staged_records`
 - `public.nms_entities`
 - `public.nms_localizations`
 - `public.nms_recipes`
@@ -43,6 +45,14 @@ privilege revocation.
 - Generated live TypeScript definitions are stored at
   `supabase/types/database.ts`.
 
+## Active data revision
+
+- Import run: `987e1f86-e6a7-53c7-a191-8264e0c3f371`
+- Source commit: `142d9ffd8078944722243398202f22cbef47cd02`
+- Status: `active`
+- Activated: 2026-08-30
+- Full verification: `docs/INITIAL_IMPORT.md`
+
 ## Legacy NMS project decision
 
 The older `NMS` project was inspected but not modified. It contains 1,103 rows
@@ -52,10 +62,7 @@ warnings. Atlas-AI therefore uses a clean, separate Supabase project.
 
 ## Next deployment gate
 
-The schema is ready but intentionally empty. Before the first bulk import:
-
-1. Reproduce the pinned transform and confirm zero blocking validation errors.
-2. Build a transactional loader for the seven generated CSV/JSONL outputs.
-3. Load and reconcile counts against `manifest.json`.
-4. Test anonymous reads and rejected mutations through the Data API.
-5. Keep asset blob upload disabled until the licensing/publication gate passes.
+The structured baseline is active. Asset blob upload remains disabled until the
+licensing/publication gate passes. The next engineering step is a manually
+dispatched GitHub Action that reproduces the validated transform and submits the
+same resumable private batches under protected environment approval.

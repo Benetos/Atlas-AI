@@ -74,7 +74,7 @@ Exit criteria:
 
 ### Phase 2 — database foundation and core entities
 
-Status: **schema deployed; initial data load pending**.
+Status: **complete for the pinned baseline**.
 
 Deliverables:
 
@@ -90,6 +90,8 @@ Exit criteria:
 - Private source records are inaccessible through the Data API.
 
 ### Phase 3 — recipe graph and search
+
+Status: **complete for the pinned baseline**.
 
 Deliverables:
 
@@ -156,9 +158,9 @@ Exit criteria:
 1. ~~Review and approve the data contract and SQL schema.~~
 2. ~~Create and link a clean Atlas-AI Supabase project.~~
 3. ~~Apply and verify the canonical schema migration.~~
-4. Install the current Supabase CLI for local development and migration diffing.
-5. Transform the pinned source and bulk-load the Atlas-AI project.
-6. Reconcile counts, broken references, search behavior, and Data API access.
+4. ~~Transform the pinned source and atomically load the Atlas-AI project.~~
+5. ~~Reconcile counts, broken references, search behavior, and Data API access.~~
+6. Install the current Supabase CLI for local development and migration diffing.
 7. Add the asset upload only after the publication gate is approved.
 8. Promote the verified flow into a manually dispatched GitHub Action.
 
