@@ -18,8 +18,10 @@ into Supabase.
 - [Source inventory](docs/SOURCE_INVENTORY.md)
 - [Canonical data contract](docs/DATA_CONTRACT.md)
 - [Supabase architecture and upload runbook](docs/SUPABASE_INGESTION.md)
+- [Supabase deployment record](docs/SUPABASE_DEPLOYMENT.md)
 - [Baseline validation report](docs/BASELINE_VALIDATION.md)
 - [Database schema](supabase/schema/nms_reference_schema.sql)
+- [Generated application database types](supabase/types/database.ts)
 
 ## Local preparation
 

@@ -57,6 +57,8 @@ Exit criteria:
 
 ### Phase 1 — repository and reproducible source sync
 
+Status: **complete for the pinned baseline**.
+
 Deliverables:
 
 - Atlas-AI repository structure and documentation.
@@ -71,6 +73,8 @@ Exit criteria:
 - No upstream JSON, MXML, or PNG files are committed to Atlas-AI.
 
 ### Phase 2 — database foundation and core entities
+
+Status: **schema deployed; initial data load pending**.
 
 Deliverables:
 
@@ -149,12 +153,11 @@ Exit criteria:
 
 ## Suggested implementation order
 
-1. Review and approve the data contract and SQL schema.
-2. Install the current Supabase CLI and initialize/link the chosen project.
-3. Create a migration using `supabase migration new nms_reference_schema` and
-   move the reviewed schema into that generated file.
-4. Apply to a local Supabase database and run schema/security tests.
-5. Transform the pinned source and bulk-load a development project.
+1. ~~Review and approve the data contract and SQL schema.~~
+2. ~~Create and link a clean Atlas-AI Supabase project.~~
+3. ~~Apply and verify the canonical schema migration.~~
+4. Install the current Supabase CLI for local development and migration diffing.
+5. Transform the pinned source and bulk-load the Atlas-AI project.
 6. Reconcile counts, broken references, search behavior, and Data API access.
 7. Add the asset upload only after the publication gate is approved.
 8. Promote the verified flow into a manually dispatched GitHub Action.
