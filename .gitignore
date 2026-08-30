@@ -6,3 +6,7 @@ build/
 __pycache__/
 *.pyc
 .DS_Store
+apps/ios/Config/Secrets.xcconfig
+apps/ios/Packs/nms-reference/*.sqlite
+*.xcuserstate
+xcuserdata/

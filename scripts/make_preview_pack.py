@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+"""Build the small Debug preview SQLite pack used by the iOS simulator."""
+
+from __future__ import annotations
+
+import importlib.util
+import shutil
+import tempfile
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+TEST_PATH = ROOT / "tests" / "test_build_nms_sqlite.py"
+OUTPUT = ROOT / "apps" / "ios" / "Atlas" / "Resources" / "nms-reference.sqlite"
+
+
+def main() -> int:
+    spec = importlib.util.spec_from_file_location("test_build_nms_sqlite", TEST_PATH)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        import_dir = module.fixture_import_dir(root)
+        output_dir = root / "sqlite"
+        module.build_nms_sqlite.build_pack(import_dir, output_dir)
+        OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(output_dir / "nms-reference.sqlite", OUTPUT)
+    print(f"Wrote {OUTPUT}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

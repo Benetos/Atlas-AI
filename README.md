@@ -1,7 +1,7 @@
 # Atlas-AI
 
-Atlas-AI is the home for the No Man's Sky reference-data ingestion project. The
-initial source is
+Atlas-AI is the home for the No Man's Sky reference-data ingestion project and
+the Apple companion app that reads it. The initial source is
 [`ApexFatality93/NMS-Handbook`](https://github.com/ApexFatality93/NMS-Handbook),
 but the Atlas data model is deliberately source-independent so additional
 sources can be assimilated later.
@@ -14,6 +14,7 @@ into Supabase.
 
 ## Project package
 
+- [Companion app contract](docs/APP.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Source inventory](docs/SOURCE_INVENTORY.md)
 - [Canonical data contract](docs/DATA_CONTRACT.md)
@@ -23,6 +24,7 @@ into Supabase.
 - [Baseline validation report](docs/BASELINE_VALIDATION.md)
 - [Database schema](supabase/schema/nms_reference_schema.sql)
 - [Generated application database types](supabase/types/database.ts)
+- [iOS app](apps/ios/README.md)
 
 ## Local preparation
 
@@ -73,6 +75,18 @@ python3 scripts/fetch_nms_assets.py
 The script performs a dry run unless `--approved` is supplied. Generated assets
 remain under ignored `build/` paths and are intended for Supabase Storage, not
 Git.
+
+Build the offline companion snapshot after a successful transform:
+
+```bash
+python3 scripts/build_nms_sqlite.py \
+  --import-dir build/nms-import \
+  --output-dir build/nms-sqlite
+```
+
+The SQLite file and pack sidecar stay under ignored `build/` paths. The iOS
+app loads that snapshot from a Debug bundle or from an essential Apple-hosted
+Background Asset. See [docs/APP.md](docs/APP.md).
 
 ## Source and licensing boundary
 
