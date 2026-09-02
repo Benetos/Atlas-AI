@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "A10000000000000000000040"
+               BlueprintIdentifier = "CA0429912B2461E9A635B3FF"
                BuildableName = "Atlas.app"
                BlueprintName = "Atlas"
                ReferencedContainer = "container:Atlas.xcodeproj">
@@ -42,7 +42,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "A10000000000000000000040"
+            BlueprintIdentifier = "CA0429912B2461E9A635B3FF"
             BuildableName = "Atlas.app"
             BlueprintName = "Atlas"
             ReferencedContainer = "container:Atlas.xcodeproj">
@@ -59,7 +59,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "A10000000000000000000040"
+            BlueprintIdentifier = "CA0429912B2461E9A635B3FF"
             BuildableName = "Atlas.app"
             BlueprintName = "Atlas"
             ReferencedContainer = "container:Atlas.xcodeproj">

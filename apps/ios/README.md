@@ -26,7 +26,7 @@ cp build/nms-sqlite/nms-reference.sqlite \
   apps/ios/Atlas/Resources/nms-reference.sqlite
 ```
 
-Open `apps/ios/Atlas.xcodeproj` (the package, not `project.pbxproj`) and run the Atlas target. Xcode loads the nested `project.xcworkspace` inside that package.
+Open **`apps/ios/Atlas.xcworkspace`** in Xcode (Finder shows this as a workspace package). You can also open `apps/ios/Atlas.xcodeproj`. Do not open `project.pbxproj` — that file lives inside the `.xcodeproj` package and is not the document Xcode launches.
 
 Copy `Config/Secrets.xcconfig.example` to `Config/Secrets.xcconfig` and add
 the publishable Supabase key only if you want live Atlas search. Debug and
