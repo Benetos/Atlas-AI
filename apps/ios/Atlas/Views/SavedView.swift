@@ -14,11 +14,26 @@ struct SavedView: View {
                         ForEach(model.saved.items) { item in
                             savedLink(item)
                         }
+                        .onDelete(perform: model.saved.removeItems)
                     }
                 }
-                Section("Recents") {
-                    ForEach(model.saved.recents) { item in
-                        savedLink(item)
+                Section {
+                    if model.saved.recents.isEmpty {
+                        Text("Items and recipes you open will appear here.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(model.saved.recents) { item in
+                            savedLink(item)
+                        }
+                    }
+                } header: {
+                    HStack {
+                        Text("Recents")
+                        Spacer()
+                        if !model.saved.recents.isEmpty {
+                            Button("Clear", action: model.saved.clearRecents)
+                                .font(.caption)
+                        }
                     }
                 }
             }
@@ -29,6 +44,8 @@ struct SavedView: View {
                     EntityDetailView(entityType: type, gameID: id)
                 case .recipe(let id):
                     RecipeDetailView(recipeID: id)
+                case .content(let dataset, let id, let sourceOrdinal):
+                    ContentDetailView(dataset: dataset, externalID: id, sourceOrdinal: sourceOrdinal)
                 }
             }
         }

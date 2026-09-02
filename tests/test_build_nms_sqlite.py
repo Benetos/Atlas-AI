@@ -362,6 +362,60 @@ class BuildNmsSqliteTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_nms_sqlite.build_pack(self.import_dir, self.output_dir, quiet=True)
 
+    def test_rejects_unsupported_contract_version(self):
+        manifest_path = self.import_dir / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["contract_version"] = 2
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "Unsupported transform contract"):
+            build_nms_sqlite.build_pack(self.import_dir, self.output_dir, quiet=True)
+
+    def test_rejects_non_hex_source_commit(self):
+        manifest_path = self.import_dir / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["source"]["commit_sha"] = "z" * 40
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "40 lowercase hexadecimal"):
+            build_nms_sqlite.build_pack(self.import_dir, self.output_dir, quiet=True)
+
+    def test_rejects_manifest_count_mismatch(self):
+        manifest_path = self.import_dir / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["counts"]["entities"] += 1
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "Manifest row count mismatch"):
+            build_nms_sqlite.build_pack(self.import_dir, self.output_dir, quiet=True)
+
+    def test_failed_rebuild_preserves_previous_pack_and_sidecar(self):
+        sqlite_path = self.build()
+        sidecar_path = self.output_dir / "pack-manifest.json"
+        previous_sqlite = sqlite_path.read_bytes()
+        previous_sidecar = sidecar_path.read_bytes()
+
+        entities_path = self.import_dir / "entities.csv"
+        invalid_entities = entities_path.read_text(encoding="utf-8").replace(
+            "substance,FUEL1",
+            "invalid,FUEL1",
+            1,
+        )
+        entities_path.write_text(invalid_entities, encoding="utf-8")
+        manifest_path = self.import_dir / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["outputs"]["entities.csv"]["sha256"] = sha256_bytes(
+            entities_path.read_bytes()
+        )
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            build_nms_sqlite.build_pack(self.import_dir, self.output_dir, quiet=True)
+
+        self.assertEqual(sqlite_path.read_bytes(), previous_sqlite)
+        self.assertEqual(sidecar_path.read_bytes(), previous_sidecar)
+        self.assertFalse(any(self.output_dir.glob(".nms-pack-*")))
+
     def test_pack_contains_canonical_tables_not_private_source(self):
         sqlite_path = self.build()
         connection = sqlite3.connect(sqlite_path)
@@ -451,10 +505,32 @@ class BuildNmsSqliteTests(unittest.TestCase):
         )
         self.assertEqual(sidecar["source_commit_sha"], COMMIT)
         self.assertEqual(sidecar["contract_version"], 1)
+        self.assertEqual(sidecar["pack_role"], "production")
         self.assertEqual(sidecar["counts"]["entities"], 3)
         self.assertEqual(sidecar["counts"]["localizations_preferred"], 1)
         self.assertEqual(sidecar["sqlite"]["sha256"], sha256_bytes(sqlite_path.read_bytes()))
         self.assertTrue(sidecar["validation"]["passed"])
+
+    def test_preview_role_is_explicit(self):
+        build_nms_sqlite.build_pack(
+            self.import_dir,
+            self.output_dir,
+            quiet=True,
+            pack_role="preview",
+        )
+        sidecar = json.loads(
+            (self.output_dir / "pack-manifest.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(sidecar["pack_role"], "preview")
+
+    def test_rejects_unknown_pack_role(self):
+        with self.assertRaisesRegex(ValueError, "Unsupported pack role"):
+            build_nms_sqlite.build_pack(
+                self.import_dir,
+                self.output_dir,
+                quiet=True,
+                pack_role="nightly",
+            )
 
 
 if __name__ == "__main__":

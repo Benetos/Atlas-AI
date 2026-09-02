@@ -8,5 +8,6 @@ __pycache__/
 .DS_Store
 apps/ios/Config/Secrets.xcconfig
 apps/ios/Packs/nms-reference/*.sqlite
+apps/ios/Packs/nms-reference/pack-manifest.json
 *.xcuserstate
 xcuserdata/

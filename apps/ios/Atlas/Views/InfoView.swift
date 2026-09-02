@@ -7,6 +7,10 @@ struct InfoView: View {
         NavigationStack {
             Form {
                 Section("Local snapshot") {
+                    LabeledContent(
+                        "Database",
+                        value: model.packRole == "production" ? "Full on-device pack" : "Debug preview"
+                    )
                     LabeledContent("Source commit", value: shortSHA(model.pack?.sourceCommitSHA))
                     LabeledContent("Contract", value: "\(model.pack?.contractVersion ?? 1)")
                     if let counts = model.pack?.countsJSON {
@@ -14,15 +18,39 @@ struct InfoView: View {
                             .font(.footnote.monospaced())
                             .foregroundStyle(.secondary)
                     }
+                    if let recovery = model.packRecoveryMessage {
+                        Text(recovery)
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                    }
+                    if model.isPackUpdateRunning {
+                        if let progress = model.packUpdateProgress {
+                            ProgressView(value: progress)
+                        } else {
+                            ProgressView()
+                        }
+                    }
+                    if let message = model.packUpdateMessage {
+                        Text(message)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    Button("Check for Database Update") {
+                        Task { await model.refreshPack() }
+                    }
+                    .disabled(model.isPackUpdateRunning)
                 }
 
                 Section("Live Atlas") {
-                    Toggle("Use live Atlas data", isOn: liveAtlasBinding)
+                    Toggle("Allow explicit live comparison", isOn: liveAtlasBinding)
+                    Text("Atlas database tools always use the installed SQLite pack. Live Atlas is contacted only when you explicitly ask for it, and never replaces a local error or missing result.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                     if model.settings.liveAtlasEnabled {
                         if let live = model.liveRevision {
                             LabeledContent("Live commit", value: shortSHA(live))
                             if let local = model.pack?.sourceCommitSHA, live != local {
-                                Text("Live data is newer than this pack. Recipe facts still prefer the local snapshot unless you ask to search live Atlas.")
+                                Text("The live and packed revisions differ. Recipe facts still prefer the local snapshot unless you ask to search live Atlas.")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                             }
@@ -42,13 +70,13 @@ struct InfoView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Section("Apple Intelligence") {
+                Section("On-device AI") {
                     LabeledContent(
-                        "Foundation Models",
+                        "Apple system model",
                         value: FoundationModelAvailability.current == .available ? "Available" : "Unavailable"
                     )
                     if FoundationModelAvailability.current == .unavailable {
-                        Text("The composer still runs local search. Atlas chat needs Apple Intelligence on iOS 26.")
+                        Text("Grounded local search and cards still work. AI narration requires Apple’s on-device system model; Atlas never falls back to a cloud model.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }

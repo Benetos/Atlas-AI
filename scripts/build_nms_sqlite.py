@@ -8,13 +8,16 @@ import csv
 import hashlib
 import json
 import re
+import shutil
 import sqlite3
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
 
 PACK_SCHEMA_VERSION = 1
+SUPPORTED_CONTRACT_VERSION = 1
 REQUIRED_INPUTS = (
     "entities.csv",
     "localizations.csv",
@@ -22,6 +25,13 @@ REQUIRED_INPUTS = (
     "recipe_ingredients.csv",
     "content_records.csv",
 )
+MANIFEST_COUNT_KEYS = {
+    "entities.csv": "entities",
+    "localizations.csv": "localizations",
+    "recipes.csv": "recipes",
+    "recipe_ingredients.csv": "recipe_ingredients",
+    "content_records.csv": "content_records",
+}
 JSON_FIELDS = {"payload", "attributes"}
 INTEGER_FIELDS = {"source_ordinal", "position"}
 BOOLEAN_FIELDS = {"is_preferred"}
@@ -36,6 +46,8 @@ NUMERIC_FIELDS = {
     "amount",
 }
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_]+")
+SOURCE_COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+PACK_ROLES = {"preview", "production"}
 
 
 def sha256_file(path: Path) -> str:
@@ -44,6 +56,20 @@ def sha256_file(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def csv_row_count(path: Path) -> int:
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if not reader.fieldnames:
+            raise ValueError(f"CSV has no header: {path}")
+        return sum(1 for _row in reader)
+
+
+def nonnegative_manifest_count(value: Any, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"Invalid manifest row count for {label}: {value!r}")
+    return value
 
 
 def decode_csv_value(field: str, value: str) -> Any:
@@ -73,22 +99,61 @@ def verify_transform_manifest(import_dir: Path) -> dict[str, Any]:
     if not manifest_path.is_file():
         raise ValueError(f"Missing transform manifest: {manifest_path}")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not manifest.get("validation", {}).get("passed", False):
+    if not isinstance(manifest, dict):
+        raise ValueError("Transform manifest must be a JSON object")
+    contract_version = manifest.get("contract_version")
+    if (
+        isinstance(contract_version, bool)
+        or not isinstance(contract_version, int)
+        or contract_version != SUPPORTED_CONTRACT_VERSION
+    ):
+        raise ValueError(
+            f"Unsupported transform contract version: {contract_version!r}; "
+            f"expected {SUPPORTED_CONTRACT_VERSION}"
+        )
+    validation = manifest.get("validation")
+    if not isinstance(validation, dict) or validation.get("passed") is not True:
         raise ValueError("Refusing to pack a transform that failed validation")
-    outputs = manifest.get("outputs") or {}
+    source = manifest.get("source")
+    if not isinstance(source, dict):
+        raise ValueError("Transform manifest source must be a JSON object")
+    commit = source.get("commit_sha")
+    if not isinstance(commit, str) or not SOURCE_COMMIT_PATTERN.fullmatch(commit):
+        raise ValueError(
+            "Transform manifest source commit must be 40 lowercase hexadecimal "
+            "characters"
+        )
+    outputs = manifest.get("outputs")
+    counts = manifest.get("counts")
+    if not isinstance(outputs, dict) or not isinstance(counts, dict):
+        raise ValueError("Transform manifest outputs and counts must be JSON objects")
     for filename in REQUIRED_INPUTS:
         path = import_dir / filename
         if not path.is_file():
             raise ValueError(f"Missing transform output: {path}")
-        recorded = (outputs.get(filename) or {}).get("sha256")
+        output = outputs.get(filename)
+        if not isinstance(output, dict):
+            raise ValueError(f"Missing transform manifest output: {filename}")
+        recorded = output.get("sha256")
         actual = sha256_file(path)
         if recorded != actual:
             raise ValueError(
                 f"Hash mismatch for {filename}: manifest {recorded} != {actual}"
             )
-    commit = (manifest.get("source") or {}).get("commit_sha")
-    if not isinstance(commit, str) or len(commit) != 40:
-        raise ValueError("Transform manifest is missing a 40-character source commit")
+        output_rows = nonnegative_manifest_count(output.get("rows"), filename)
+        count_key = MANIFEST_COUNT_KEYS[filename]
+        summary_rows = nonnegative_manifest_count(counts.get(count_key), count_key)
+        if summary_rows != output_rows:
+            raise ValueError(
+                f"Manifest row count mismatch for {filename}: outputs records "
+                f"{output_rows}, counts records {summary_rows}"
+            )
+        actual_rows = csv_row_count(path)
+        if actual_rows != output_rows:
+            raise ValueError(
+                f"CSV row count mismatch for {filename}: manifest {output_rows}, "
+                f"found {actual_rows}"
+            )
     return manifest
 
 
@@ -378,7 +443,95 @@ def insert_content(connection: sqlite3.Connection, rows: Iterable[dict[str, Any]
     return count
 
 
-def build_pack(import_dir: Path, output_dir: Path, *, quiet: bool = False) -> int:
+def validate_pack_database(
+    connection: sqlite3.Connection,
+    manifest: dict[str, Any],
+    counts: dict[str, int],
+) -> None:
+    expected_manifest_counts = {
+        "entities": manifest["counts"]["entities"],
+        "recipes": manifest["counts"]["recipes"],
+        "recipe_ingredients": manifest["counts"]["recipe_ingredients"],
+        "content_records": manifest["counts"]["content_records"],
+    }
+    for key, expected in expected_manifest_counts.items():
+        if counts[key] != expected:
+            raise ValueError(
+                f"Inserted row count mismatch for {key}: manifest {expected}, "
+                f"inserted {counts[key]}"
+            )
+
+    tables = {
+        "entities": "nms_entities",
+        "localizations_preferred": "nms_localizations",
+        "recipes": "nms_recipes",
+        "recipe_ingredients": "nms_recipe_ingredients",
+        "content_records": "nms_content_records",
+    }
+    for key, table in tables.items():
+        actual = int(connection.execute(f"select count(*) from {table}").fetchone()[0])
+        if actual != counts[key]:
+            raise ValueError(
+                f"SQLite row count mismatch for {table}: expected {counts[key]}, "
+                f"found {actual}"
+            )
+
+    quick_check = [row[0] for row in connection.execute("pragma quick_check")]
+    if quick_check != ["ok"]:
+        raise ValueError(f"SQLite quick_check failed: {quick_check}")
+
+    foreign_key_errors = connection.execute("pragma foreign_key_check").fetchall()
+    if foreign_key_errors:
+        raise ValueError(f"SQLite foreign key check failed: {foreign_key_errors[:10]}")
+
+
+def publish_pack_outputs(
+    temporary_sqlite: Path,
+    temporary_sidecar: Path,
+    sqlite_path: Path,
+    sidecar_path: Path,
+) -> None:
+    sources = (
+        (temporary_sqlite, sqlite_path),
+        (temporary_sidecar, sidecar_path),
+    )
+    backups: dict[Path, Path] = {}
+    for _source, destination in sources:
+        if not destination.exists():
+            continue
+        backup = temporary_sqlite.parent / f".previous-{destination.name}"
+        try:
+            backup.hardlink_to(destination)
+        except OSError:
+            shutil.copy2(destination, backup)
+        backups[destination] = backup
+
+    published: list[Path] = []
+    try:
+        for source, destination in sources:
+            source.replace(destination)
+            published.append(destination)
+    except Exception:
+        for destination in reversed(published):
+            backup = backups.get(destination)
+            if backup is not None:
+                backup.replace(destination)
+            else:
+                destination.unlink(missing_ok=True)
+        raise
+
+
+def build_pack(
+    import_dir: Path,
+    output_dir: Path,
+    *,
+    quiet: bool = False,
+    pack_role: str = "production",
+) -> int:
+    if pack_role not in PACK_ROLES:
+        raise ValueError(
+            f"Unsupported pack role {pack_role!r}; expected one of {sorted(PACK_ROLES)}"
+        )
     import_dir = import_dir.resolve()
     output_dir = output_dir.resolve()
     manifest = verify_transform_manifest(import_dir)
@@ -386,81 +539,93 @@ def build_pack(import_dir: Path, output_dir: Path, *, quiet: bool = False) -> in
     output_dir.mkdir(parents=True, exist_ok=True)
     sqlite_path = output_dir / "nms-reference.sqlite"
     sidecar_path = output_dir / "pack-manifest.json"
-    if sqlite_path.exists():
-        sqlite_path.unlink()
+    generated_at = datetime.now(timezone.utc).isoformat()
 
-    connection = sqlite3.connect(sqlite_path)
-    try:
-        create_schema(connection)
-        entity_count = insert_entities(
-            connection, iter_csv_rows(import_dir / "entities.csv")
-        )
-        localization_count = insert_localizations(
-            connection, iter_csv_rows(import_dir / "localizations.csv")
-        )
-        recipe_count = insert_recipes(
-            connection, iter_csv_rows(import_dir / "recipes.csv")
-        )
-        ingredient_count = insert_ingredients(
-            connection, iter_csv_rows(import_dir / "recipe_ingredients.csv")
-        )
-        content_count = insert_content(
-            connection, iter_csv_rows(import_dir / "content_records.csv")
-        )
-        counts = {
-            "entities": entity_count,
-            "localizations_preferred": localization_count,
-            "recipes": recipe_count,
-            "recipe_ingredients": ingredient_count,
-            "content_records": content_count,
+    with tempfile.TemporaryDirectory(prefix=".nms-pack-", dir=output_dir) as temporary:
+        temporary_dir = Path(temporary)
+        temporary_sqlite = temporary_dir / sqlite_path.name
+        temporary_sidecar = temporary_dir / sidecar_path.name
+
+        connection = sqlite3.connect(temporary_sqlite)
+        try:
+            create_schema(connection)
+            entity_count = insert_entities(
+                connection, iter_csv_rows(import_dir / "entities.csv")
+            )
+            localization_count = insert_localizations(
+                connection, iter_csv_rows(import_dir / "localizations.csv")
+            )
+            recipe_count = insert_recipes(
+                connection, iter_csv_rows(import_dir / "recipes.csv")
+            )
+            ingredient_count = insert_ingredients(
+                connection, iter_csv_rows(import_dir / "recipe_ingredients.csv")
+            )
+            content_count = insert_content(
+                connection, iter_csv_rows(import_dir / "content_records.csv")
+            )
+            counts = {
+                "entities": entity_count,
+                "localizations_preferred": localization_count,
+                "recipes": recipe_count,
+                "recipe_ingredients": ingredient_count,
+                "content_records": content_count,
+            }
+            connection.execute(
+                """
+                insert into pack_manifest (
+                  pack_schema_version, contract_version, source_repository,
+                  source_commit_sha, source_committed_at, generated_at,
+                  counts_json, input_manifest_sha256
+                ) values (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    PACK_SCHEMA_VERSION,
+                    SUPPORTED_CONTRACT_VERSION,
+                    source["repository"],
+                    source["commit_sha"],
+                    source.get("committed_at"),
+                    generated_at,
+                    json.dumps(counts, separators=(",", ":"), sort_keys=True),
+                    sha256_file(import_dir / "manifest.json"),
+                ),
+            )
+            connection.execute("analyze")
+            connection.commit()
+            validate_pack_database(connection, manifest, counts)
+        finally:
+            connection.close()
+
+        sidecar = {
+            "pack_schema_version": PACK_SCHEMA_VERSION,
+            "contract_version": SUPPORTED_CONTRACT_VERSION,
+            "asset_pack_id": "nms-reference",
+            "pack_role": pack_role,
+            "source_repository": source["repository"],
+            "source_commit_sha": source["commit_sha"],
+            "source_committed_at": source.get("committed_at"),
+            "generated_at": generated_at,
+            "counts": counts,
+            "sqlite": {
+                "file": sqlite_path.name,
+                "bytes": temporary_sqlite.stat().st_size,
+                "sha256": sha256_file(temporary_sqlite),
+            },
+            "validation": {
+                "passed": True,
+                "errors": [],
+            },
         }
-        connection.execute(
-            """
-            insert into pack_manifest (
-              pack_schema_version, contract_version, source_repository,
-              source_commit_sha, source_committed_at, generated_at,
-              counts_json, input_manifest_sha256
-            ) values (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                PACK_SCHEMA_VERSION,
-                int(manifest.get("contract_version") or 1),
-                source["repository"],
-                source["commit_sha"],
-                source.get("committed_at"),
-                datetime.now(timezone.utc).isoformat(),
-                json.dumps(counts, separators=(",", ":"), sort_keys=True),
-                sha256_file(import_dir / "manifest.json"),
-            ),
+        temporary_sidecar.write_text(
+            json.dumps(sidecar, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8",
         )
-        connection.execute("analyze")
-        connection.commit()
-    finally:
-        connection.close()
-
-    sidecar = {
-        "pack_schema_version": PACK_SCHEMA_VERSION,
-        "contract_version": int(manifest.get("contract_version") or 1),
-        "asset_pack_id": "nms-reference",
-        "source_repository": source["repository"],
-        "source_commit_sha": source["commit_sha"],
-        "source_committed_at": source.get("committed_at"),
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "counts": counts,
-        "sqlite": {
-            "file": sqlite_path.name,
-            "bytes": sqlite_path.stat().st_size,
-            "sha256": sha256_file(sqlite_path),
-        },
-        "validation": {
-            "passed": True,
-            "errors": [],
-        },
-    }
-    sidecar_path.write_text(
-        json.dumps(sidecar, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+        publish_pack_outputs(
+            temporary_sqlite,
+            temporary_sidecar,
+            sqlite_path,
+            sidecar_path,
+        )
     if not quiet:
         print(f"SQLite pack: {sqlite_path}")
         print(f"Source commit: {source['commit_sha']}")
@@ -484,12 +649,18 @@ def parse_args() -> argparse.Namespace:
         default=Path("build/nms-sqlite"),
         help="Directory for nms-reference.sqlite and pack-manifest.json",
     )
+    parser.add_argument(
+        "--pack-role",
+        choices=sorted(PACK_ROLES),
+        default="production",
+        help="Mark the sidecar as a production or Debug preview pack",
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    return build_pack(args.import_dir, args.output_dir)
+    return build_pack(args.import_dir, args.output_dir, pack_role=args.pack_role)
 
 
 if __name__ == "__main__":

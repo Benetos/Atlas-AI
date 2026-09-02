@@ -16,7 +16,7 @@ Never commit database passwords, secret keys, or service-role keys.
 
 ## Deployed foundation
 
-The initial migration created:
+The reference-schema and import-pipeline migrations created:
 
 - `nms_private.import_runs`
 - `nms_private.source_records`
@@ -35,11 +35,12 @@ privilege revocation.
 
 ## Verification snapshot
 
-- Migration history contains exactly the initial Atlas-AI migration.
-- All eight expected tables exist with their primary and foreign keys.
+- Migration history contains the two Atlas-AI migrations listed above.
+- All nine expected tables exist with their primary and foreign keys.
 - Security advisor: no warning or error findings.
-- Performance advisor: only expected unused-index informational findings on
-  empty tables.
+- At initial schema deployment, the performance advisor reported only expected
+  unused-index informational findings on the then-empty tables. Post-import
+  verification is recorded in `docs/INITIAL_IMPORT.md`.
 - Private-table no-policy notices are intentional: the schema is not exposed,
   public roles have no schema usage, and only `service_role` has table grants.
 - Generated live TypeScript definitions are stored at

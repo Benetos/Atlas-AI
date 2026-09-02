@@ -6,6 +6,13 @@ the Apple companion app that reads it. The initial source is
 but the Atlas data model is deliberately source-independent so additional
 sources can be assimilated later.
 
+The companion’s AI contract is fully on-device: Apple’s
+`SystemLanguageModel.default` narrates grounded local evidence when available,
+and a deterministic offline path provides the same search and cards elsewhere.
+There is no cloud-model fallback. Every player-facing database capability also
+runs against the installed SQLite pack; Supabase is not a runtime dependency
+for canonical answers.
+
 The upstream repository is large and contains thousands of binary assets.
 Atlas-AI does **not** vendor that repository or its generated data. Instead, it
 uses a shallow partial sparse clone in `.cache/`, transforms the pinned snapshot
@@ -15,6 +22,8 @@ into Supabase.
 ## Project package
 
 - [Companion app contract](docs/APP.md)
+- [Companion app feature roadmap](docs/feature-roadmap-Atlas.md)
+- [Specialized experiences implementation plan](docs/SPECIALIZED_EXPERIENCES_PLAN.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Source inventory](docs/SOURCE_INVENTORY.md)
 - [Canonical data contract](docs/DATA_CONTRACT.md)
@@ -32,8 +41,8 @@ Requirements:
 
 - Git 2.25+
 - Python 3.11+
-- `psql` for the future database-load step
-- Supabase CLI 2.81.3+ when the schema is promoted into migrations
+- `psql` for direct database loading and verification
+- Supabase CLI 2.81.3+ for local development, migrations, and advisors
 
 Fetch only the data and generator directories from the upstream repository:
 
@@ -81,12 +90,17 @@ Build the offline companion snapshot after a successful transform:
 ```bash
 python3 scripts/build_nms_sqlite.py \
   --import-dir build/nms-import \
-  --output-dir build/nms-sqlite
+  --output-dir build/nms-sqlite \
+  --pack-role production
 ```
 
 The SQLite file and pack sidecar stay under ignored `build/` paths. The iOS
 app loads that snapshot from a Debug bundle or from an essential Apple-hosted
 Background Asset. See [docs/APP.md](docs/APP.md).
+
+Build the validated Apple-hosted archive (including the SQLite file and
+sidecar) with `./scripts/package_nms_asset_pack.sh`. Release builds embed the
+managed downloader extension but exclude the Debug preview database.
 
 ## Source and licensing boundary
 

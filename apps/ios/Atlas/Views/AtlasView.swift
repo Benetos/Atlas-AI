@@ -6,6 +6,7 @@ struct AtlasView: View {
     @State private var messages: [AtlasMessage] = []
     @State private var busy = false
     @State private var confirmWeb = false
+    @State private var pendingWebPrompt: String?
 
     private let chips = [
         "How do I cook food?",
@@ -45,6 +46,8 @@ struct AtlasView: View {
                     EntityDetailView(entityType: type, gameID: id)
                 case .recipe(let id):
                     RecipeDetailView(recipeID: id)
+                case .content(let dataset, let id, let sourceOrdinal):
+                    ContentDetailView(dataset: dataset, externalID: id, sourceOrdinal: sourceOrdinal)
                 }
             }
             .confirmationDialog(
@@ -55,9 +58,13 @@ struct AtlasView: View {
                 Button("Allow internet search") {
                     model.settings.webSearchEnabled = true
                     model.settings.webSearchConfirmed = true
-                    Task { await send("Search the web for current No Man's Sky expedition") }
+                    let prompt = pendingWebPrompt ?? "Search the web for current No Man's Sky expedition"
+                    pendingWebPrompt = nil
+                    Task { await send(prompt) }
                 }
-                Button("Cancel", role: .cancel) {}
+                Button("Cancel", role: .cancel) {
+                    pendingWebPrompt = nil
+                }
             }
         }
     }
@@ -71,6 +78,7 @@ struct AtlasView: View {
                     if model.settings.webSearchConfirmed {
                         Task { await send("Search the web for current No Man's Sky expedition") }
                     } else {
+                        pendingWebPrompt = "Search the web for current No Man's Sky expedition"
                         confirmWeb = true
                     }
                 } else {
@@ -84,9 +92,6 @@ struct AtlasView: View {
         var values = chips
         if model.settings.webSearchEnabled || !model.settings.webSearchConfirmed {
             values.append("Search the web")
-        }
-        if model.settings.liveAtlasEnabled {
-            values.append("Search live Atlas")
         }
         return values
     }
@@ -125,7 +130,16 @@ struct AtlasView: View {
             }
             .buttonStyle(.plain)
         case .content(let record):
-            ContentCardView(record: record)
+            NavigationLink(
+                value: AtlasRoute.content(
+                    dataset: record.dataset,
+                    id: record.externalID,
+                    sourceOrdinal: record.sourceOrdinal
+                )
+            ) {
+                ContentCardView(record: record)
+            }
+            .buttonStyle(.plain)
         case .web(let hit):
             Link(destination: hit.url) {
                 WebCardView(hit: hit)
@@ -156,6 +170,15 @@ struct AtlasView: View {
     private func send(_ text: String) async {
         let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty, let store = model.store else { return }
+        let plan = AtlasQueryPlan(prompt: prompt)
+        if plan.requestsWeb && !model.settings.webSearchConfirmed {
+            pendingWebPrompt = prompt
+            confirmWeb = true
+            return
+        }
+        if plan.requestsWeb && !model.settings.webSearchEnabled {
+            model.settings.webSearchEnabled = true
+        }
         draft = ""
         messages.append(AtlasMessage(role: .user, text: prompt))
         busy = true

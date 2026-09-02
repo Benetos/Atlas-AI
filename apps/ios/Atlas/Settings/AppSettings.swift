@@ -25,10 +25,19 @@ final class AppSettings {
     }
 
     var supabaseURL: URL? {
-        let value = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String
-            ?? ProcessInfo.processInfo.environment["SUPABASE_URL"]
-            ?? "https://amgezynqenbgopnnpxso.supabase.co"
-        return URL(string: value)
+        let candidates = [
+            Bundle.main.object(forInfoDictionaryKey: "SUPABASE_URL") as? String,
+            ProcessInfo.processInfo.environment["SUPABASE_URL"],
+            "https://amgezynqenbgopnnpxso.supabase.co",
+        ]
+        guard let value = candidates.compactMap({ candidate in
+            candidate?.trimmingCharacters(in: .whitespacesAndNewlines)
+        }).first(where: { !$0.isEmpty }),
+              let url = URL(string: value),
+              url.scheme == "https",
+              url.host != nil
+        else { return nil }
+        return url
     }
 
     var supabaseAnonKey: String {

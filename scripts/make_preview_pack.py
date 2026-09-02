@@ -11,7 +11,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TEST_PATH = ROOT / "tests" / "test_build_nms_sqlite.py"
-OUTPUT = ROOT / "apps" / "ios" / "Atlas" / "Resources" / "nms-reference.sqlite"
+OUTPUT_DIR = ROOT / "apps" / "ios" / "Atlas" / "Resources"
+SQLITE_OUTPUT = OUTPUT_DIR / "nms-reference.sqlite"
+SIDECAR_OUTPUT = OUTPUT_DIR / "pack-manifest.json"
 
 
 def main() -> int:
@@ -24,10 +26,16 @@ def main() -> int:
         root = Path(temp)
         import_dir = module.fixture_import_dir(root)
         output_dir = root / "sqlite"
-        module.build_nms_sqlite.build_pack(import_dir, output_dir)
-        OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(output_dir / "nms-reference.sqlite", OUTPUT)
-    print(f"Wrote {OUTPUT}")
+        module.build_nms_sqlite.build_pack(
+            import_dir,
+            output_dir,
+            pack_role="preview",
+        )
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(output_dir / "nms-reference.sqlite", SQLITE_OUTPUT)
+        shutil.copy2(output_dir / "pack-manifest.json", SIDECAR_OUTPUT)
+    print(f"Wrote {SQLITE_OUTPUT}")
+    print(f"Wrote {SIDECAR_OUTPUT}")
     return 0
 
 

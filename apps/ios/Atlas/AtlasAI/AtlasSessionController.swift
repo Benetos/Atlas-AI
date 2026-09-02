@@ -36,44 +36,48 @@ struct AtlasSessionController {
     var settings: AppSettings
 
     func reply(to prompt: String) async -> AtlasReply {
-        let local = (try? gatherLocal(prompt: prompt)) ?? AtlasReply(
-            text: "I could not search the local Atlas pack.",
-            cards: [],
-            note: nil
-        )
+        let plan = AtlasQueryPlan(prompt: prompt)
+        let local: AtlasReply
+        do {
+            local = try gatherLocal(plan: plan)
+        } catch {
+            return AtlasReply(
+                text: "I could not read the installed Atlas pack.",
+                cards: [],
+                note: "Local data failed closed; Atlas did not substitute a network source. \(error.localizedDescription)"
+            )
+        }
         var cards = local.cards
         var notes: [String] = []
 
         if FoundationModelAvailability.current == .unavailable {
-            notes.append("Atlas chat needs Apple Intelligence. Showing local search instead.")
+            notes.append("On-device AI narration is unavailable. Showing grounded local results instead.")
         }
 
-        if settings.liveAtlasEnabled {
-            do {
-                let live = try await LiveAtlasClient(settings: settings)
-                    .searchEntities(query: prompt, type: nil)
-                let liveCards = live.map(AtlasCard.entity)
-                if !liveCards.isEmpty {
-                    notes.append("Live Atlas results are labeled separately from the packed snapshot.")
-                    cards.append(contentsOf: liveCards.filter { liveCard in
-                        !cards.contains(where: { $0.id == liveCard.id })
-                    })
+        if plan.requestsLive {
+            if settings.liveAtlasEnabled, let query = plan.localQuery {
+                do {
+                    let live = try await LiveAtlasClient(settings: settings)
+                        .searchEntities(query: query, type: nil)
+                    let liveCards = live.map(AtlasCard.entity)
+                    if !liveCards.isEmpty {
+                        notes.append("Added explicitly requested live Atlas matches; packed matches take precedence.")
+                        cards.append(contentsOf: liveCards.filter { liveCard in
+                            !cards.contains(where: { $0.id == liveCard.id })
+                        })
+                    }
+                } catch {
+                    notes.append("Live Atlas unavailable. Showing the installed pack only.")
                 }
-            } catch {
-                notes.append("Live Atlas unavailable.")
+            } else {
+                notes.append("Live Atlas is off. Showing the installed pack only.")
             }
         }
 
-        let wantsWeb = settings.webSearchEnabled && (
-            prompt.localizedCaseInsensitiveContains("web")
-                || prompt.localizedCaseInsensitiveContains("wiki")
-                || prompt.localizedCaseInsensitiveContains("patch")
-                || prompt.localizedCaseInsensitiveContains("expedition")
-                || local.cards.isEmpty
-        )
+        let wantsWeb = settings.webSearchEnabled && plan.requestsWeb
         if wantsWeb {
             do {
-                let hits = try await WebSearchClient().search(query: prompt)
+                let hits = try await WebSearchClient().search(query: plan.externalQuery)
                 cards.append(contentsOf: hits.map(AtlasCard.web))
                 notes.append("Web results are community/web, not Atlas recipes.")
             } catch {
@@ -95,15 +99,42 @@ struct AtlasSessionController {
         )
     }
 
-    private func gatherLocal(prompt: String) throws -> AtlasReply {
-        let entities = try store.searchEntities(query: prompt, type: nil, limit: 8)
+    private func gatherLocal(plan: AtlasQueryPlan) throws -> AtlasReply {
+        let entities: [Entity]
+        if let query = plan.localQuery {
+            entities = try store.searchEntities(query: query, type: nil, limit: 8)
+        } else {
+            entities = []
+        }
+
         var recipes: [Recipe] = []
         var content: [ContentRecord] = []
-        if let first = entities.first {
-            recipes.append(contentsOf: (try? store.recipesProducing(type: first.entityType, id: first.gameID)) ?? [])
-            recipes.append(contentsOf: (try? store.recipesUsing(type: first.entityType, id: first.gameID)) ?? [])
+
+        if plan.shouldSearchRecipes, let query = plan.localQuery {
+            recipes.append(
+                contentsOf: (try? store.searchRecipes(
+                    query: query,
+                    kind: plan.recipeKind,
+                    limit: 8
+                )) ?? []
+            )
         }
-        content = (try? store.searchContent(query: prompt, dataset: nil, limit: 5)) ?? []
+
+        if let first = entities.first {
+            let producing = (try? store.recipesProducing(type: first.entityType, id: first.gameID)) ?? []
+            let using = (try? store.recipesUsing(type: first.entityType, id: first.gameID)) ?? []
+            recipes.append(contentsOf: producing.filter { plan.matchesIntendedKind($0.recipeKind) })
+            recipes.append(contentsOf: using.filter { plan.matchesIntendedKind($0.recipeKind) })
+        }
+
+        recipes = unique(recipes)
+        if recipes.isEmpty, plan.shouldBrowseRecipes, let kind = plan.recipeKind {
+            recipes = (try? store.recipes(kind: kind, limit: 8, offset: 0)) ?? []
+        }
+
+        if let query = plan.localQuery {
+            content = (try? store.searchContent(query: query, dataset: nil, limit: 5)) ?? []
+        }
 
         var cards: [AtlasCard] = entities.map(AtlasCard.entity)
         cards.append(contentsOf: recipes.prefix(6).map(AtlasCard.recipe))
@@ -112,9 +143,17 @@ struct AtlasSessionController {
         let text: String
         if entities.isEmpty && recipes.isEmpty && content.isEmpty {
             text = "I do not have a local match for that. Try a different item name, or enable web search for community sources."
+        } else if plan.shouldBrowseRecipes, let kind = plan.recipeKind, entities.isEmpty {
+            text = "I found \(recipes.count) \(kind) recipe(s) in the pinned Atlas snapshot."
         } else if let entity = entities.first {
-            let used = recipes.filter { $0.ingredients.contains { $0.gameID == entity.gameID } }.count
-            let produced = recipes.filter { $0.outputGameID == entity.gameID }.count
+            let used = recipes.filter { recipe in
+                recipe.ingredients.contains {
+                    $0.entityType == entity.entityType && $0.gameID == entity.gameID
+                }
+            }.count
+            let produced = recipes.filter {
+                $0.outputEntityType == entity.entityType && $0.outputGameID == entity.gameID
+            }.count
             text = "\(entity.title) is a \(entity.entityType). Atlas has \(produced) recipe(s) that make it and \(used) recipe(s) that use it."
         } else {
             text = "I found \(cards.count) local result(s) in the pinned Atlas snapshot."
@@ -125,7 +164,7 @@ struct AtlasSessionController {
     private func foundationSpokenAnswer(prompt: String, local: AtlasReply) async -> String? {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
-            return await FoundationModelsAtlas.run(prompt: prompt, local: local, store: store, settings: settings)
+            return await FoundationModelsAtlas.run(prompt: prompt, local: local, store: store)
         }
         #endif
         return nil
@@ -134,6 +173,11 @@ struct AtlasSessionController {
     private func unique(_ cards: [AtlasCard]) -> [AtlasCard] {
         var seen: Set<String> = []
         return cards.filter { seen.insert($0.id).inserted }
+    }
+
+    private func unique(_ recipes: [Recipe]) -> [Recipe] {
+        var seen: Set<String> = []
+        return recipes.filter { seen.insert($0.recipeID).inserted }
     }
 }
 
@@ -153,19 +197,13 @@ enum FoundationModelsAtlas {
     static func run(
         prompt: String,
         local: AtlasReply,
-        store: SQLiteNMSStore,
-        settings: AppSettings
+        store: SQLiteNMSStore
     ) async -> String? {
         do {
             let grounded = groundedContext(local)
             let session = LanguageModelSession(
-                tools: [
-                    SearchEntitiesTool(store: store),
-                    GetEntityTool(store: store),
-                    RecipesForTool(store: store),
-                    RecipesUsingTool(store: store),
-                    SearchContentTool(store: store),
-                ],
+                model: SystemLanguageModel.default,
+                tools: LocalDatabaseToolRegistry.make(store: store),
                 instructions: Instructions(instructions)
             )
             let response = try await session.respond(to: "\(prompt)\n\nGrounded local results:\n\(grounded)")
@@ -185,6 +223,30 @@ enum FoundationModelsAtlas {
             }
         }
         return names.isEmpty ? "none" : names.joined(separator: "; ")
+    }
+}
+
+/// The complete model-callable database surface. Its concrete initializer only
+/// accepts the installed SQLite pack, so a network repository cannot be
+/// registered accidentally as an Atlas database tool.
+@available(iOS 26.0, macOS 26.0, *)
+enum LocalDatabaseToolRegistry {
+    static let expectedNames = [
+        "search_entities",
+        "get_entity",
+        "recipes_for",
+        "recipes_using",
+        "search_content",
+    ]
+
+    static func make(store: SQLiteNMSStore) -> [any Tool] {
+        [
+            SearchEntitiesTool(store: store),
+            GetEntityTool(store: store),
+            RecipesForTool(store: store),
+            RecipesUsingTool(store: store),
+            SearchContentTool(store: store),
+        ]
     }
 }
 
@@ -287,12 +349,26 @@ struct SearchContentTool: Tool {
 }
 
 @available(iOS 26.0, macOS 26.0, *)
-private func recipeJSON(_ recipe: Recipe) -> [String: String] {
+private func recipeJSON(_ recipe: Recipe) -> [String: Any] {
     [
         "id": recipe.recipeID,
         "kind": recipe.recipeKind,
         "title": recipe.title,
-        "output": recipe.outputGameID,
+        "output": [
+            "type": recipe.outputEntityType,
+            "id": recipe.outputGameID,
+            "title": recipe.outputTitle ?? recipe.outputGameID,
+            "amount": recipe.outputAmount ?? "",
+        ],
+        "ingredients": recipe.ingredients.map { ingredient in
+            [
+                "position": ingredient.position,
+                "type": ingredient.entityType,
+                "id": ingredient.gameID,
+                "title": ingredient.title ?? ingredient.gameID,
+                "amount": ingredient.amount ?? "",
+            ] as [String: Any]
+        },
     ]
 }
 

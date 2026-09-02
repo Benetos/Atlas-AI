@@ -6,7 +6,8 @@
     }
   },
   "fileSelectors": [
-    { "file": "nms-reference.sqlite" }
+    { "file": "nms-reference.sqlite" },
+    { "file": "pack-manifest.json" }
   ],
-  "platforms": ["iOS", "iPadOS", "macOS"]
+  "platforms": ["iOS", "macOS"]
 }

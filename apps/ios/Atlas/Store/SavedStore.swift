@@ -56,6 +56,18 @@ final class SavedStore {
         Self.save(recents, key: "atlas.recentItems")
     }
 
+    func removeItems(at offsets: IndexSet) {
+        for index in offsets.sorted(by: >) where items.indices.contains(index) {
+            items.remove(at: index)
+        }
+        Self.save(items, key: defaultsKey)
+    }
+
+    func clearRecents() {
+        recents.removeAll()
+        Self.save(recents, key: "atlas.recentItems")
+    }
+
     private static func load(key: String) -> [SavedItem] {
         guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
         return (try? JSONDecoder().decode([SavedItem].self, from: data)) ?? []

@@ -1,13 +1,11 @@
-#if canImport(BackgroundAssets)
 import BackgroundAssets
-import Foundation
+import ExtensionFoundation
+import StoreKit
 
-/// Release builds should add Xcode's Managed Background Assets downloader
-/// extension target and use this type as its entry. Debug loads the bundled
-/// preview SQLite instead.
+/// Apple-hosted Managed Background Assets downloader for the Atlas database pack.
+@main
 struct AtlasDownloaderExtension: StoreDownloaderExtension {
-    func shouldDownload(_: AssetPack) -> Bool {
-        true
+    func shouldDownload(_ assetPack: AssetPack) -> Bool {
+        assetPack.id == "nms-reference"
     }
 }
-#endif
