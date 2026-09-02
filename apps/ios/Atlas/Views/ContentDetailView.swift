@@ -67,23 +67,29 @@ struct ContentDetailView: View {
     @MainActor
     private func load() async {
         isLoading = true
+        record = nil
+        fields = []
+        prettyPayload = ""
+        errorMessage = nil
         defer { isLoading = false }
         guard let store = model.store else {
             errorMessage = "The local Atlas pack is unavailable."
             return
         }
         do {
-            record = try store.content(dataset: dataset, id: externalID, sourceOrdinal: sourceOrdinal)
-            guard let record else {
+            guard let loadedRecord = try store.content(
+                dataset: dataset,
+                id: externalID,
+                sourceOrdinal: sourceOrdinal
+            ) else {
                 errorMessage = "No matching record was found."
                 return
             }
-            let presentation = Self.present(payload: record.payload)
+            let presentation = Self.present(payload: loadedRecord.payload)
+            record = loadedRecord
             fields = presentation.fields
             prettyPayload = presentation.prettyPayload
-            errorMessage = nil
         } catch {
-            record = nil
             errorMessage = error.localizedDescription
         }
     }
@@ -99,7 +105,7 @@ struct ContentDetailView: View {
         if let dictionary = object as? [String: Any] {
             fields = dictionary.keys.sorted().compactMap { key in
                 guard let value = displayValue(dictionary[key]) else { return nil }
-                return ContentField(label: fieldLabel(key), value: value)
+                return ContentField(key: key, label: fieldLabel(key), value: value)
             }
         } else {
             fields = []
@@ -119,6 +125,8 @@ struct ContentDetailView: View {
             return nil
         case let string as String:
             return string.isEmpty ? nil : string
+        case let boolean as Bool:
+            return boolean ? "true" : "false"
         case let number as NSNumber:
             return number.stringValue
         case let values as [Any]:
@@ -140,8 +148,9 @@ struct ContentDetailView: View {
 }
 
 private struct ContentField: Identifiable {
+    var key: String
     var label: String
     var value: String
 
-    var id: String { label }
+    var id: String { key }
 }

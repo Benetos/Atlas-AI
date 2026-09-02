@@ -143,6 +143,10 @@ struct PackValidator: Sendable {
               sidecar.counts.values.allSatisfy({ $0 >= 0 }) else {
             throw PackValidationError.invalidSidecar("identity, provenance, or counts are malformed")
         }
+        if let sourceCommittedAt = sidecar.sourceCommittedAt,
+           !Self.isISO8601(sourceCommittedAt) {
+            throw PackValidationError.invalidSidecar("source commit timestamp is malformed")
+        }
 
         let attributes = try fileManager.attributesOfItem(atPath: candidate.sqliteURL.path)
         guard let size = attributes[.size] as? NSNumber,
@@ -161,6 +165,7 @@ struct PackValidator: Sendable {
               manifest.contractVersion == sidecar.contractVersion,
               manifest.sourceRepository == sidecar.sourceRepository,
               manifest.sourceCommitSHA == sidecar.sourceCommitSHA,
+              manifest.sourceCommittedAt == sidecar.sourceCommittedAt,
               manifest.generatedAt == sidecar.generatedAt else {
             throw PackValidationError.databaseMismatch("manifest provenance differs")
         }
@@ -194,6 +199,13 @@ struct PackValidator: Sendable {
 
     private static func isSourceCommit(_ value: String) -> Bool {
         value.count == 40 && value.allSatisfy { $0.isHexDigit && !$0.isUppercase }
+    }
+
+    private static func isISO8601(_ value: String) -> Bool {
+        let formatter = ISO8601DateFormatter()
+        if formatter.date(from: value) != nil { return true }
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: value) != nil
     }
 }
 
@@ -285,11 +297,9 @@ actor PackActivationStore {
         await progress?(.activating)
         let releaseID = staged.sidecar.sqlite.sha256
         let releaseURL = releasesURL.appendingPathComponent(releaseID, isDirectory: true)
-        if !fileManager.fileExists(atPath: releaseURL.path) {
-            try fileManager.moveItem(at: stagingRelease, to: releaseURL)
-            stagingMoved = true
-        }
-        let installed = try validator.validate(self.candidate(at: releaseURL))
+        let installation = try installStagedRelease(stagingRelease, at: releaseURL)
+        stagingMoved = installation.moved
+        let installed = installation.pack
         let descriptor = descriptor(for: installed.sidecar)
         let oldState = try? readState()
         let previous: PackReleaseDescriptor?
@@ -309,7 +319,7 @@ actor PackActivationStore {
             previous = nil
         }
         try writeState(PackActivationState(version: 1, active: descriptor, previous: previous))
-        try pruneReleases(keeping: Set([descriptor.releaseID, previous?.releaseID].compactMap { $0 }))
+        pruneReleases(keeping: Set([descriptor.releaseID, previous?.releaseID].compactMap { $0 }))
         return VerifiedPack(
             sqliteURL: installed.sqliteURL,
             sidecarURL: installed.sidecarURL,
@@ -329,6 +339,61 @@ actor PackActivationStore {
             sqliteURL: releaseURL.appendingPathComponent(PackLocator.sqliteName),
             sidecarURL: releaseURL.appendingPathComponent(PackLocator.sidecarName)
         )
+    }
+
+    /// Installs a verified staging directory at its content-addressed path.
+    /// An existing release is reused only after full validation. If that copy
+    /// is damaged, it remains quarantined until the replacement validates at
+    /// the final path, and the activation pointer is updated only by the caller.
+    private func installStagedRelease(
+        _ stagingRelease: URL,
+        at releaseURL: URL
+    ) throws -> (pack: VerifiedPack, moved: Bool) {
+        guard fileManager.fileExists(atPath: releaseURL.path) else {
+            try fileManager.moveItem(at: stagingRelease, to: releaseURL)
+            do {
+                return (try validateContentAddressedRelease(at: releaseURL), true)
+            } catch {
+                try? fileManager.removeItem(at: releaseURL)
+                throw error
+            }
+        }
+
+        do {
+            return (try validateContentAddressedRelease(at: releaseURL), false)
+        } catch {
+            let quarantineURL = stagingURL.appendingPathComponent(
+                ".quarantine-\(releaseURL.lastPathComponent)-\(UUID().uuidString)",
+                isDirectory: true
+            )
+            try fileManager.moveItem(at: releaseURL, to: quarantineURL)
+
+            var replacementMoved = false
+            do {
+                try fileManager.moveItem(at: stagingRelease, to: releaseURL)
+                replacementMoved = true
+                let installed = try validateContentAddressedRelease(at: releaseURL)
+                try? fileManager.removeItem(at: quarantineURL)
+                return (installed, true)
+            } catch {
+                let replacementError = error
+                if replacementMoved {
+                    try? fileManager.removeItem(at: releaseURL)
+                }
+                if !fileManager.fileExists(atPath: releaseURL.path) {
+                    try? fileManager.moveItem(at: quarantineURL, to: releaseURL)
+                }
+                throw replacementError
+            }
+        }
+    }
+
+    private func validateContentAddressedRelease(at releaseURL: URL) throws -> VerifiedPack {
+        let verified = try validator.validate(candidate(at: releaseURL))
+        guard verified.sidecar.sqlite.sha256 == releaseURL.lastPathComponent else {
+            throw PackValidationError.databaseMismatch("release directory identity differs")
+        }
+        return verified
     }
 
     private func verifiedRelease(
@@ -379,7 +444,7 @@ actor PackActivationStore {
             options: [.skipsHiddenFiles]
         )
         return urls.compactMap { url -> (Date, PackReleaseDescriptor)? in
-            guard let verified = try? validator.validate(candidate(at: url)) else { return nil }
+            guard let verified = try? validateContentAddressedRelease(at: url) else { return nil }
             let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
                 .contentModificationDate ?? .distantPast
             return (date, descriptor(for: verified.sidecar))
@@ -412,13 +477,14 @@ actor PackActivationStore {
         try encoder.encode(state).write(to: stateURL, options: [.atomic])
     }
 
-    private func pruneReleases(keeping releaseIDs: Set<String>) throws {
-        for url in try fileManager.contentsOfDirectory(
+    private func pruneReleases(keeping releaseIDs: Set<String>) {
+        guard let urls = try? fileManager.contentsOfDirectory(
             at: releasesURL,
             includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles]
-        ) where !releaseIDs.contains(url.lastPathComponent) {
-            try fileManager.removeItem(at: url)
+        ) else { return }
+        for url in urls where !releaseIDs.contains(url.lastPathComponent) {
+            try? fileManager.removeItem(at: url)
         }
     }
 }

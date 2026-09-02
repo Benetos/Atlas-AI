@@ -1,11 +1,13 @@
 # Atlas iOS companion
 
 SwiftUI app for iOS 26+. Canonical NMS facts come from a pinned SQLite
-snapshot. Apple’s `SystemLanguageModel.default` runs on-device and may only
-speak facts returned by local tools. There is no cloud-model fallback; when the
-system model is unavailable, the deterministic planner, local search, and cards
-remain fully usable. Every database tool is backed by the installed read-only
-SQLite pack. See [docs/APP.md](../../docs/APP.md).
+snapshot. Deterministic local results and cards are currently authoritative.
+Apple’s `SystemLanguageModel.default` runs on-device and is instructed to
+narrate only facts returned by local tools, but structural evidence validation
+of its generated prose remains a beta target. There is no cloud-model fallback;
+when the system model is unavailable, the deterministic planner, local search,
+and cards remain fully usable. Every database tool is backed by the installed
+read-only SQLite pack. See [docs/APP.md](../../docs/APP.md).
 
 ## Requirements
 

@@ -139,10 +139,14 @@ provenance (`nms_entities.source_commit_sha`), not from `nms_private`.
 
 ## Atlas AI contract
 
-The installed database knows NMS facts. The model does not. A model may only
-state facts returned by on-device tools or present in a validated local
-evidence bundle. If evidence is missing, Atlas says so and offers a different
-local search. It does not silently escalate the question to a network source.
+The installed database knows NMS facts. The model does not. Today,
+deterministic SQLite retrieval, templated summaries, and native cards are the
+authoritative output. The on-device model is instructed to narrate only those
+local results, but the structural evidence ledger and claim validation that can
+prove every generated factual statement are beta targets, not current runtime
+guarantees. Generated prose is therefore presentation, not a canonical fact
+source. A local miss or database failure never silently escalates to a network
+source.
 
 ### Runtime policy and provider order
 
@@ -179,11 +183,13 @@ prompt -> deterministic policy envelope
 ```
 
 The model session receives the fixed local tool registry, not network clients,
-settings, arbitrary SQL, or mutating services. Generated claims and actions
-carry evidence IDs; invalid or unknown IDs cause deterministic rendering from
-the same local evidence instead of being shown or executed. The current
-`AtlasQueryPlan` remains the complete deterministic fallback and supplies
-source-policy signals until those checks move into a dedicated envelope.
+settings, arbitrary SQL, or mutating services. In the beta target architecture,
+generated claims and actions carry evidence IDs; invalid or unknown IDs cause
+deterministic rendering from the same local evidence instead of being shown or
+executed. That structural validation is not implemented for current generated
+prose. The current `AtlasQueryPlan`, SQLite results, templated summary, and
+cards remain the authoritative deterministic path and supply source-policy
+signals until those checks move into a dedicated envelope.
 
 Never present a web snippet as an Atlas recipe. If a web result disagrees with
 local or live Atlas on items, recipes, or ingredients, Atlas states the packed

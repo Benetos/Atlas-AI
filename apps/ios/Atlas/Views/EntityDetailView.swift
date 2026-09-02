@@ -8,10 +8,14 @@ struct EntityDetailView: View {
     @State private var entity: Entity?
     @State private var produced: [Recipe] = []
     @State private var usedIn: [Recipe] = []
+    @State private var errorMessage: String?
+    @State private var isLoading = true
 
     var body: some View {
         Group {
-            if let entity {
+            if isLoading {
+                ProgressView("Loading item…")
+            } else if let entity {
                 List {
                     Section {
                         HStack(spacing: 12) {
@@ -63,22 +67,51 @@ struct EntityDetailView: View {
                         Image(systemName: model.saved.isSaved(savedItem(entity)) ? "bookmark.fill" : "bookmark")
                     }
                 }
+            } else if let errorMessage {
+                ContentUnavailableView(
+                    "Could not load item",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(errorMessage)
+                )
             } else {
                 ContentUnavailableView("Item not in this snapshot", systemImage: "cube")
             }
         }
         .navigationTitle(entity?.title ?? "Item")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear(perform: load)
+        .task(id: routeKey) {
+            load()
+        }
     }
 
+    private var routeKey: String {
+        "\(entityType):\(gameID)"
+    }
+
+    @MainActor
     private func load() {
-        guard let store = model.store else { return }
-        entity = try? store.entity(type: entityType, id: gameID)
-        produced = (try? store.recipesProducing(type: entityType, id: gameID)) ?? []
-        usedIn = (try? store.recipesUsing(type: entityType, id: gameID)) ?? []
-        if let entity {
-            model.saved.remember(savedItem(entity))
+        isLoading = true
+        entity = nil
+        produced = []
+        usedIn = []
+        errorMessage = nil
+        defer { isLoading = false }
+        guard let store = model.store else {
+            errorMessage = "The local Atlas pack is unavailable."
+            return
+        }
+        do {
+            guard let loadedEntity = try store.entity(type: entityType, id: gameID) else {
+                return
+            }
+            let loadedProduced = try store.recipesProducing(type: entityType, id: gameID)
+            let loadedUsedIn = try store.recipesUsing(type: entityType, id: gameID)
+            entity = loadedEntity
+            produced = loadedProduced
+            usedIn = loadedUsedIn
+            model.saved.remember(savedItem(loadedEntity))
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

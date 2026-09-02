@@ -6,12 +6,14 @@ the Apple companion app that reads it. The initial source is
 but the Atlas data model is deliberately source-independent so additional
 sources can be assimilated later.
 
-The companion’s AI contract is fully on-device: Apple’s
-`SystemLanguageModel.default` narrates grounded local evidence when available,
-and a deterministic offline path provides the same search and cards elsewhere.
-There is no cloud-model fallback. Every player-facing database capability also
-runs against the installed SQLite pack; Supabase is not a runtime dependency
-for canonical answers.
+The companion’s AI contract is fully on-device. Deterministic SQLite results,
+templated summaries, and native cards are currently authoritative. Apple’s
+`SystemLanguageModel.default` may narrate those local results when available,
+but structural claim/evidence validation of generated prose is a beta target;
+generated narration is not itself a canonical data source. There is no
+cloud-model fallback. Every player-facing database capability also runs against
+the installed SQLite pack; Supabase is not a runtime dependency for canonical
+answers.
 
 The upstream repository is large and contains thousands of binary assets.
 Atlas-AI does **not** vendor that repository or its generated data. Instead, it

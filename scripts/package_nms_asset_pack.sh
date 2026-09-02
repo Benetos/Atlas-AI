@@ -204,6 +204,10 @@ TABLES = {
     "recipe_ingredients": "nms_recipe_ingredients",
     "content_records": "nms_content_records",
 }
+FTS_TABLES = {
+    "nms_entities_fts": "nms_entities",
+    "nms_content_fts": "nms_content_records",
+}
 
 
 def fail(message: str) -> None:
@@ -363,12 +367,23 @@ try:
     for key, table in TABLES.items():
         actual = connection.execute(f"select count(*) from {table}").fetchone()[0]
         require_equal(actual, EXPECTED_SQLITE_COUNTS[key], f"SQLite table count {table}")
-    for table in ("nms_entities_fts", "nms_content_fts"):
+    for fts_table, canonical_table in FTS_TABLES.items():
         present = connection.execute(
-            "select 1 from sqlite_master where type = 'table' and name = ?", (table,)
+            "select 1 from sqlite_master where type = 'table' and name = ?", (fts_table,)
         ).fetchone()
         if present is None:
-            fail(f"SQLite is missing required FTS table {table}")
+            fail(f"SQLite is missing required FTS table {fts_table}")
+        canonical_count = connection.execute(
+            f"select count(*) from {canonical_table}"
+        ).fetchone()[0]
+        fts_count = connection.execute(
+            f"select count(*) from {fts_table}"
+        ).fetchone()[0]
+        require_equal(
+            fts_count,
+            canonical_count,
+            f"SQLite FTS row count {fts_table} matching {canonical_table}",
+        )
 finally:
     connection.close()
 

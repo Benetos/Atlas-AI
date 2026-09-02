@@ -498,6 +498,34 @@ class BuildNmsSqliteTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def test_validation_rejects_missing_fts_row(self):
+        sqlite_path = self.build()
+        manifest = json.loads(
+            (self.import_dir / "manifest.json").read_text(encoding="utf-8")
+        )
+        sidecar = json.loads(
+            (self.output_dir / "pack-manifest.json").read_text(encoding="utf-8")
+        )
+        connection = sqlite3.connect(sqlite_path)
+        try:
+            connection.execute(
+                "delete from nms_entities_fts "
+                "where rowid = (select min(rowid) from nms_entities_fts)"
+            )
+            connection.commit()
+
+            with self.assertRaisesRegex(
+                ValueError,
+                r"nms_entities_fts.*nms_entities",
+            ):
+                build_nms_sqlite.validate_pack_database(
+                    connection,
+                    manifest,
+                    sidecar["counts"],
+                )
+        finally:
+            connection.close()
+
     def test_sidecar_records_counts_and_file_hash(self):
         sqlite_path = self.build()
         sidecar = json.loads(

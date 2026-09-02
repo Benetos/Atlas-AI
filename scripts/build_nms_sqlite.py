@@ -476,6 +476,23 @@ def validate_pack_database(
                 f"found {actual}"
             )
 
+    fts_tables = {
+        "nms_entities_fts": "nms_entities",
+        "nms_content_fts": "nms_content_records",
+    }
+    for fts_table, canonical_table in fts_tables.items():
+        expected = int(
+            connection.execute(f"select count(*) from {canonical_table}").fetchone()[0]
+        )
+        actual = int(
+            connection.execute(f"select count(*) from {fts_table}").fetchone()[0]
+        )
+        if actual != expected:
+            raise ValueError(
+                f"SQLite FTS row count mismatch for {fts_table}: expected {expected} "
+                f"rows matching {canonical_table}, found {actual}"
+            )
+
     quick_check = [row[0] for row in connection.execute("pragma quick_check")]
     if quick_check != ["ok"]:
         raise ValueError(f"SQLite quick_check failed: {quick_check}")

@@ -4,10 +4,14 @@ struct RecipeDetailView: View {
     @Environment(AppModel.self) private var model
     var recipeID: String
     @State private var recipe: Recipe?
+    @State private var errorMessage: String?
+    @State private var isLoading = true
 
     var body: some View {
         Group {
-            if let recipe {
+            if isLoading {
+                ProgressView("Loading recipe…")
+            } else if let recipe {
                 List {
                     Section {
                         LabeledContent("Kind", value: recipe.recipeKind.capitalized)
@@ -51,17 +55,39 @@ struct RecipeDetailView: View {
                         Image(systemName: model.saved.isSaved(savedItem(recipe)) ? "bookmark.fill" : "bookmark")
                     }
                 }
+            } else if let errorMessage {
+                ContentUnavailableView(
+                    "Could not load recipe",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(errorMessage)
+                )
             } else {
                 ContentUnavailableView("Recipe not in this snapshot", systemImage: "list.bullet")
             }
         }
         .navigationTitle(recipe?.title ?? "Recipe")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            recipe = try? model.store?.recipe(id: recipeID)
-            if let recipe {
-                model.saved.remember(savedItem(recipe))
-            }
+        .task(id: recipeID) {
+            load()
+        }
+    }
+
+    @MainActor
+    private func load() {
+        isLoading = true
+        recipe = nil
+        errorMessage = nil
+        defer { isLoading = false }
+        guard let store = model.store else {
+            errorMessage = "The local Atlas pack is unavailable."
+            return
+        }
+        do {
+            guard let loadedRecipe = try store.recipe(id: recipeID) else { return }
+            recipe = loadedRecipe
+            model.saved.remember(savedItem(loadedRecipe))
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

@@ -211,6 +211,35 @@ final class OfflineAtlasTests: XCTestCase {
         }
     }
 
+    func testRecipeQueriesPropagateIngredientTableFailures() throws {
+        let url = try mutablePreviewURL()
+        try execute("drop table nms_recipe_ingredients", at: url)
+        let store = try SQLiteNMSStore(fileURL: url)
+
+        XCTAssertThrowsError(try store.recipes(kind: nil, limit: 8, offset: 0))
+        XCTAssertThrowsError(
+            try store.recipesProducing(type: "product", id: "CIRCUITBOARD")
+        )
+    }
+
+    func testConversationFailsClosedWhenARequiredRecipeTableIsMissing() async throws {
+        let url = try mutablePreviewURL()
+        try execute("drop table nms_recipe_ingredients", at: url)
+        let settings = AppSettings()
+        settings.liveAtlasEnabled = false
+        settings.webSearchEnabled = false
+        let controller = AtlasSessionController(
+            store: try SQLiteNMSStore(fileURL: url),
+            settings: settings
+        )
+
+        let reply = await controller.reply(to: "Circuit Board recipe")
+
+        XCTAssertEqual(reply.text, "I could not read the installed Atlas pack.")
+        XCTAssertTrue(reply.cards.isEmpty)
+        XCTAssertTrue(reply.note?.contains("failed closed") == true)
+    }
+
     #if canImport(FoundationModels)
     @available(iOS 26.0, *)
     func testEveryModelDatabaseToolUsesTheInstalledPack() async throws {
@@ -454,6 +483,56 @@ final class PackLifecycleTests: XCTestCase {
         XCTAssertEqual(stable.sidecar.sqlite.sha256, first.sidecar.sqlite.sha256)
     }
 
+    func testReinstallRepairsACorruptReleaseWithTheSameDigest() async throws {
+        let workspace = try temporaryWorkspace()
+        let candidate = try productionCandidate(in: workspace, variant: 1)
+        let store = PackActivationStore(rootURL: workspace.appendingPathComponent("active"))
+        let installed = try await store.activate(candidate)
+
+        let handle = try FileHandle(forWritingTo: installed.sqliteURL)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data([0]))
+        try handle.close()
+
+        let repaired = try await store.activate(candidate)
+
+        XCTAssertEqual(repaired.sidecar.sqlite.sha256, installed.sidecar.sqlite.sha256)
+        XCTAssertNoThrow(try SQLiteNMSStore(fileURL: repaired.sqliteURL).manifest())
+    }
+
+    func testActivationSucceedsWhenObsoleteReleaseCleanupFails() async throws {
+        let workspace = try temporaryWorkspace()
+        let activationRoot = workspace.appendingPathComponent("active")
+        let staleRelease = activationRoot
+            .appendingPathComponent("releases", isDirectory: true)
+            .appendingPathComponent("stale-release", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: staleRelease,
+            withIntermediateDirectories: true
+        )
+        let fileManager = SelectiveFailureFileManager(deniedRemovalURL: staleRelease)
+        let store = PackActivationStore(rootURL: activationRoot, fileManager: fileManager)
+        let candidate = try productionCandidate(in: workspace, variant: 1)
+
+        let installed = try await store.activate(candidate)
+
+        XCTAssertNoThrow(try SQLiteNMSStore(fileURL: installed.sqliteURL).manifest())
+        XCTAssertTrue(FileManager.default.fileExists(atPath: staleRelease.path))
+    }
+
+    func testValidatorRejectsMalformedOrMismatchedSourceCommitTimestamp() throws {
+        let workspace = try temporaryWorkspace()
+        let validator = PackValidator(requiredRole: "production")
+
+        let malformed = try productionCandidate(in: workspace, variant: 1)
+        try setSidecarSourceCommittedAt("not-a-timestamp", for: malformed)
+        XCTAssertThrowsError(try validator.validate(malformed))
+
+        let mismatched = try productionCandidate(in: workspace, variant: 2)
+        try setSidecarSourceCommittedAt("2025-01-01T00:00:00Z", for: mismatched)
+        XCTAssertThrowsError(try validator.validate(mismatched))
+    }
+
     private func productionCandidate(
         in workspace: URL,
         variant: Int
@@ -516,6 +595,22 @@ final class PackLifecycleTests: XCTestCase {
         return url
     }
 
+    private func setSidecarSourceCommittedAt(
+        _ value: String,
+        for candidate: PackCandidate
+    ) throws {
+        let data = try Data(contentsOf: candidate.sidecarURL)
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        object["source_committed_at"] = value
+        let updated = try JSONSerialization.data(
+            withJSONObject: object,
+            options: [.prettyPrinted, .sortedKeys]
+        )
+        try updated.write(to: candidate.sidecarURL, options: .atomic)
+    }
+
     private func execute(_ sql: String, at url: URL) throws {
         var db: OpaquePointer?
         let openStatus = sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READWRITE, nil)
@@ -532,5 +627,21 @@ final class PackLifecycleTests: XCTestCase {
                 userInfo: [NSLocalizedDescriptionKey: String(cString: sqlite3_errmsg(db))]
             )
         }
+    }
+}
+
+private final class SelectiveFailureFileManager: FileManager, @unchecked Sendable {
+    private let deniedRemovalPath: String
+
+    init(deniedRemovalURL: URL) {
+        deniedRemovalPath = deniedRemovalURL.standardizedFileURL.path
+        super.init()
+    }
+
+    override func removeItem(at URL: URL) throws {
+        if URL.standardizedFileURL.path == deniedRemovalPath {
+            throw CocoaError(.fileWriteNoPermission)
+        }
+        try super.removeItem(at: URL)
     }
 }

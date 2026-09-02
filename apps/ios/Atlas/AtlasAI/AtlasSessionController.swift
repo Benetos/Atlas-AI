@@ -112,28 +112,28 @@ struct AtlasSessionController {
 
         if plan.shouldSearchRecipes, let query = plan.localQuery {
             recipes.append(
-                contentsOf: (try? store.searchRecipes(
+                contentsOf: try store.searchRecipes(
                     query: query,
                     kind: plan.recipeKind,
                     limit: 8
-                )) ?? []
+                )
             )
         }
 
         if let first = entities.first {
-            let producing = (try? store.recipesProducing(type: first.entityType, id: first.gameID)) ?? []
-            let using = (try? store.recipesUsing(type: first.entityType, id: first.gameID)) ?? []
+            let producing = try store.recipesProducing(type: first.entityType, id: first.gameID)
+            let using = try store.recipesUsing(type: first.entityType, id: first.gameID)
             recipes.append(contentsOf: producing.filter { plan.matchesIntendedKind($0.recipeKind) })
             recipes.append(contentsOf: using.filter { plan.matchesIntendedKind($0.recipeKind) })
         }
 
         recipes = unique(recipes)
         if recipes.isEmpty, plan.shouldBrowseRecipes, let kind = plan.recipeKind {
-            recipes = (try? store.recipes(kind: kind, limit: 8, offset: 0)) ?? []
+            recipes = try store.recipes(kind: kind, limit: 8, offset: 0)
         }
 
         if let query = plan.localQuery {
-            content = (try? store.searchContent(query: query, dataset: nil, limit: 5)) ?? []
+            content = try store.searchContent(query: query, dataset: nil, limit: 5)
         }
 
         var cards: [AtlasCard] = entities.map(AtlasCard.entity)

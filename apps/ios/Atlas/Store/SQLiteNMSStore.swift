@@ -420,7 +420,7 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
             parameters.append(.int(offset))
             return try query(sql, parameters: parameters, map: Self.mapRecipe).map { recipe in
                 var copy = recipe
-                copy.ingredients = (try? self.ingredientsUnlocked(recipeID: recipe.recipeID)) ?? []
+                copy.ingredients = try self.ingredientsUnlocked(recipeID: recipe.recipeID)
                 return copy
             }
         }
@@ -509,7 +509,7 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
                 map: Self.mapRecipe
             ).map { recipe in
                 var copy = recipe
-                copy.ingredients = (try? self.ingredientsUnlocked(recipeID: recipe.recipeID)) ?? []
+                copy.ingredients = try self.ingredientsUnlocked(recipeID: recipe.recipeID)
                 return copy
             }
         }
@@ -535,7 +535,7 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
                 map: Self.mapRecipe
             ).map { recipe in
                 var copy = recipe
-                copy.ingredients = (try? self.ingredientsUnlocked(recipeID: recipe.recipeID)) ?? []
+                copy.ingredients = try self.ingredientsUnlocked(recipeID: recipe.recipeID)
                 return copy
             }
         }

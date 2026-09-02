@@ -41,9 +41,13 @@ final class AppSettings {
     }
 
     var supabaseAnonKey: String {
-        (Bundle.main.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String)
-            ?? ProcessInfo.processInfo.environment["SUPABASE_ANON_KEY"]
-            ?? ""
+        let candidates = [
+            Bundle.main.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String,
+            ProcessInfo.processInfo.environment["SUPABASE_ANON_KEY"],
+        ]
+        return candidates.compactMap { candidate in
+            candidate?.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.first(where: { !$0.isEmpty }) ?? ""
     }
 
     var liveAtlasConfigured: Bool {
