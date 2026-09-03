@@ -38,7 +38,7 @@ enum PackLocator {
     }
 
     #if DEBUG
-    static func bundledPreview() throws -> PackCandidate {
+    static func bundledDebugPack() throws -> PackCandidate {
         guard let sqliteURL = Bundle.main.url(
             forResource: "nms-reference",
             withExtension: "sqlite"

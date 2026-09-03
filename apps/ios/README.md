@@ -4,9 +4,11 @@ SwiftUI app for iOS 26+. Canonical NMS facts come from a pinned SQLite
 snapshot. Deterministic local results and cards are currently authoritative.
 Apple’s `SystemLanguageModel.default` runs on-device and is instructed to
 narrate only facts returned by local tools, but structural evidence validation
-of its generated prose remains a beta target. There is no cloud-model fallback;
-when the system model is unavailable, the deterministic planner, local search,
-and cards remain fully usable. Every database tool is backed by the installed
+of its generated prose remains a beta target. Atlas waits up to eight seconds
+for that narration and then uses the verified database answer if generation
+fails or stalls. There is no cloud-model fallback; when the system model is
+unavailable, the deterministic planner, local search, and cards remain fully
+usable. Every database tool is backed by the installed
 read-only SQLite pack. See [docs/APP.md](../../docs/APP.md).
 
 ## Requirements
@@ -16,22 +18,19 @@ read-only SQLite pack. See [docs/APP.md](../../docs/APP.md).
 
 ## Debug (simulator)
 
-The app bundle includes a **preview** snapshot and matching verification
-sidecar (`Atlas/Resources/nms-reference.sqlite` and `pack-manifest.json`) with a
-handful of items so Library and Atlas work without App Store asset hosting.
-
-To use a full pack in Debug, transform the pinned source then replace the
-preview file:
+Normal Debug builds use the complete pinned database, not the small test
+fixture. Prepare the ignored generated pack from the repository root before
+opening or building the app:
 
 ```bash
-./scripts/sync_nms_source.sh
-python3 scripts/transform_nms.py
-python3 scripts/build_nms_sqlite.py --pack-role production
-cp build/nms-sqlite/nms-reference.sqlite \
-  apps/ios/Atlas/Resources/nms-reference.sqlite
-cp build/nms-sqlite/pack-manifest.json \
-  apps/ios/Atlas/Resources/pack-manifest.json
+./scripts/prepare_ios_debug_pack.sh
 ```
+
+The Xcode project references `build/nms-sqlite/nms-reference.sqlite` and its
+production sidecar directly for Debug. These generated files remain ignored by
+Git. A missing pack fails the build instead of silently launching a misleading
+three-item catalog. The small preview pair lives under `AtlasTests/Fixtures`
+and is only used by tests that need a disposable database to corrupt or mutate.
 
 Open **`apps/ios/Atlas.xcworkspace`** in Xcode (Finder shows this as a workspace package). You can also open `apps/ios/Atlas.xcodeproj`. Do not open `project.pbxproj` — that file lives inside the `.xcodeproj` package and is not the document Xcode launches.
 
@@ -43,8 +42,10 @@ From the repository root, build and verify the Debug app bundle with:
 
 The verifier requires the app executable, embedded downloader extension,
 Background Assets configuration, privacy manifest, and the correct pack
-resource policy. Debug verification reconciles the preview sidecar and SQLite;
-Release verification rejects both preview files. Its DerivedData directory defaults to a path under
+resource policy. Debug verification reconciles the full sidecar and SQLite;
+Release verification rejects both bundled files. Debug also requires the full
+pinned counts (2,597 entities, 2,181 recipes, and 4,752 feature records). Its
+DerivedData directory defaults to a path under
 `/private/tmp`; override it with `--derived-data-path` or
 `ATLAS_DERIVED_DATA_PATH`. To inspect an existing build without rebuilding:
 
@@ -53,10 +54,10 @@ Release verification rejects both preview files. Its DerivedData directory defau
   --app-bundle /path/to/Atlas.app
 ```
 
-The shared `Atlas` scheme also includes the hosted `AtlasTests` target. It
-covers the documented query-planning examples, the fixed local database-tool
-registry, direct execution of every registered tool against the preview pack,
-and the offline Ferrite Dust, Circuit Board, and broad cooking answer paths.
+The shared `Atlas` scheme also includes the hosted `AtlasTests` target. Search,
+category, tool-registry, and offline-answer integration checks run with the full
+pack embedded in the host app. Narrow corruption and malformed-manifest tests
+use the separate disposable fixture.
 
 Copy `Config/Secrets.xcconfig.example` to `Config/Secrets.xcconfig` and add
 the publishable Supabase key only if you want explicitly requested live Atlas
@@ -65,8 +66,9 @@ replaces a local miss or pack error. Debug and Release xcconfigs `#include?`
 that file, so the example copy is what actually loads the key. The app runs
 fully offline without it.
 
-Debug validates the bundled preview when no activated production release is
-present. Release cannot use the preview.
+Debug validates and opens the bundled full pack directly so an older simulator
+activation cannot mask the database under test. Release never bundles a pack;
+it installs the verified Apple-hosted production asset.
 
 ## Release
 

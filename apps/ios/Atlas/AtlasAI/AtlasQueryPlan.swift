@@ -22,6 +22,7 @@ struct AtlasQueryPlan: Equatable, Sendable {
         case lookup
         case recipe
         case uses
+        case browseEntities
         case browseRecipes
     }
 
@@ -29,6 +30,7 @@ struct AtlasQueryPlan: Equatable, Sendable {
     let source: Source
     let operation: Operation?
     let goal: Goal
+    let entityType: String?
     let localQuery: String?
     let externalQuery: String
 
@@ -41,7 +43,20 @@ struct AtlasQueryPlan: Equatable, Sendable {
     }
 
     var shouldBrowseRecipes: Bool {
-        goal == .browseRecipes && operation != nil
+        goal == .browseRecipes
+    }
+
+    var shouldBrowseEntities: Bool { goal == .browseEntities }
+
+    /// FTS5 intentionally uses strict AND matching. Keep that precision first,
+    /// then try a conservative singular form so natural prompts such as
+    /// "warp cells" can still find an item named "Warp Cell".
+    var localSearchQueries: [String] {
+        guard let localQuery else { return [] }
+        let singular = Self.tokens(in: localQuery)
+            .map(Self.singularized)
+            .joined(separator: " ")
+        return singular == localQuery.lowercased() ? [localQuery] : [localQuery, singular]
     }
 
     func matchesIntendedKind(_ recipeKind: String) -> Bool {
@@ -62,8 +77,15 @@ struct AtlasQueryPlan: Equatable, Sendable {
         externalQuery = external.isEmpty ? normalized : external
 
         let withoutDomain = Self.removingGameName(from: external)
-        let searchableTokens = Self.tokens(in: withoutDomain).filter { token in
-            !Self.localGlue.contains(token.lowercased())
+        let candidateTokens = Self.tokens(in: withoutDomain)
+        let resolvedEntityType = Self.entityType(for: candidateTokens.map { $0.lowercased() })
+        entityType = resolvedEntityType
+        let searchableTokens = candidateTokens.filter { token in
+            if let resolvedEntityType,
+               Self.entityTypeTerms[resolvedEntityType]?.contains(token.lowercased()) == true {
+                return false
+            }
+            return !Self.localGlue.contains(token.lowercased())
         }
         let searchableLower = searchableTokens.map { $0.lowercased() }
         localQuery = searchableTokens.isEmpty ? nil : searchableTokens.joined(separator: " ")
@@ -75,10 +97,11 @@ struct AtlasQueryPlan: Equatable, Sendable {
             || (lowerTokens.first == "what" && lowerTokens.last == "for")
             || lowerTokens.contains("uses")
 
-        let broadRecipeQuery = operation != nil && (
+        let broadRecipeQuery = recipeLanguage && (
             searchableLower.isEmpty
                 || Set(searchableLower).isSubset(of: Self.broadRecipeTerms)
         )
+        let broadEntityQuery = resolvedEntityType != nil && searchableLower.isEmpty
 
         if broadRecipeQuery {
             goal = .browseRecipes
@@ -86,6 +109,8 @@ struct AtlasQueryPlan: Equatable, Sendable {
             goal = .uses
         } else if operation != nil || recipeLanguage {
             goal = .recipe
+        } else if broadEntityQuery {
+            goal = .browseEntities
         } else {
             goal = .lookup
         }
@@ -107,20 +132,29 @@ struct AtlasQueryPlan: Equatable, Sendable {
     ]
 
     private static let broadRecipeTerms: Set<String> = [
-        "food", "foods", "item", "items", "something", "stuff", "thing", "things",
+        "all", "any", "everything", "food", "foods", "item", "items",
+        "something", "stuff", "thing", "things",
+    ]
+
+    private static let entityTypeTerms: [String: Set<String>] = [
+        "product": ["product", "products"],
+        "substance": ["substance", "substances"],
+        "technology": ["tech", "technologies", "technology"],
     ]
 
     /// Words that express the question rather than identify NMS data. Operation
     /// words are removed because their typed meaning is retained separately.
     private static let localGlue: Set<String> = [
-        "a", "about", "an", "and", "are", "atlas", "can", "could",
-        "craft", "crafted", "crafting", "do", "does", "for", "from", "get",
-        "give", "how", "i", "in", "ingredient", "ingredients", "internet", "is",
+        "a", "about", "all", "an", "and", "any", "are", "atlas", "can", "could",
+        "build", "built", "create", "created", "craft", "crafted", "crafting",
+        "do", "does", "everything", "find", "for", "from", "get", "give", "how",
+        "i", "in", "ingredient", "ingredients", "internet", "into", "is", "locate",
         "latest", "live", "look", "lookup", "made", "make", "making", "me",
-        "my", "newest", "now", "of", "on", "online", "please", "recent",
+        "my", "need", "newest", "now", "obtain", "of", "on", "online", "please",
+        "produce", "produced", "recent",
         "recipe", "recipes", "refine", "refined", "refiner", "refining", "search",
         "show", "tell", "the", "this", "to", "today", "up", "use", "used",
-        "uses", "web", "what", "where", "which", "wiki", "with", "would", "you",
+        "uses", "using", "web", "what", "where", "which", "wiki", "with", "would", "you",
         "cook", "cooked", "cooking", "current",
     ]
 
@@ -165,6 +199,41 @@ struct AtlasQueryPlan: Equatable, Sendable {
             }
         }
         return best?.operation
+    }
+
+    private static func entityType(for tokens: [String]) -> String? {
+        let meaningful = tokens.filter { !localGlue.contains($0) }
+        for type in ["product", "substance", "technology"] {
+            guard let terms = entityTypeTerms[type],
+                  let matched = meaningful.first(where: terms.contains)
+            else { continue }
+
+            // Plural category names are unambiguous. Treat a singular category
+            // as browsing only when it is the entire remaining subject, so an
+            // item such as "Salvaged Technology Data" stays an item lookup.
+            if matched.hasSuffix("s") || matched == "tech" || meaningful == [matched] {
+                return type
+            }
+        }
+        return nil
+    }
+
+    private static func singularized(_ token: String) -> String {
+        let value = token.lowercased()
+        guard value.count > 3 else { return value }
+        if value.hasSuffix("ies"), value.count > 4 {
+            return String(value.dropLast(3)) + "y"
+        }
+        if value.hasSuffix("ches") || value.hasSuffix("shes") || value.hasSuffix("xes") {
+            return String(value.dropLast(2))
+        }
+        if value.hasSuffix("s"),
+           !value.hasSuffix("ss"),
+           !value.hasSuffix("us"),
+           !value.hasSuffix("is") {
+            return String(value.dropLast())
+        }
+        return value
     }
 
     private static func removingDirectivePhrases(from prompt: String) -> String {

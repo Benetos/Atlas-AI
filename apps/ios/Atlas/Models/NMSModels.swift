@@ -8,6 +8,19 @@ struct PackManifest: Equatable, Sendable {
     var sourceCommittedAt: String?
     var generatedAt: String
     var countsJSON: String
+
+    var counts: [String: Int] {
+        guard let data = countsJSON.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([String: Int].self, from: data)
+        else { return [:] }
+        return decoded
+    }
+
+    var searchableRecordCount: Int {
+        counts["entities", default: 0]
+            + counts["recipes", default: 0]
+            + counts["content_records", default: 0]
+    }
 }
 
 enum EntityType: String, Codable, Sendable, CaseIterable, Identifiable {

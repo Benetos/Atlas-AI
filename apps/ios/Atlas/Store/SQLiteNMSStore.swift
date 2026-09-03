@@ -47,8 +47,11 @@ protocol NMSStore: Sendable {
     func searchRecipes(query: String, kind: String?, limit: Int) throws -> [Recipe]
     func recipe(id: String) throws -> Recipe?
     func recipesProducing(type: String, id: String) throws -> [Recipe]
+    func recipesProducing(type: String, id: String, limit: Int) throws -> [Recipe]
     func recipesUsing(type: String, id: String) throws -> [Recipe]
+    func recipesUsing(type: String, id: String, limit: Int) throws -> [Recipe]
     func content(dataset: String, id: String, sourceOrdinal: Int) throws -> ContentRecord?
+    func contentRecords(dataset: String, limit: Int, offset: Int) throws -> [ContentRecord]
     func searchContent(query: String, dataset: String?, limit: Int) throws -> [ContentRecord]
 }
 
@@ -357,9 +360,53 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
     }
 
     func searchEntities(query: String, type: String?, limit: Int = 20) throws -> [Entity] {
-        guard let match = Self.ftsQuery(query), limit > 0 else { return [] }
+        let tokens = Self.searchTokens(query)
+        guard let match = Self.ftsQuery(query), !tokens.isEmpty, limit > 0 else { return [] }
         return try withLock {
-            var sql = """
+            var metadataSQL = """
+            select e.entity_type, e.game_id, e.name, e.display_name, e.subtitle, e.description,
+                   e.category, e.subcategory, e.rarity, e.legality, e.base_value,
+                   e.color_r, e.color_g, e.color_b, e.source_dataset, e.source_commit_sha
+              from nms_entities e
+             where 1 = 1
+            """
+            var metadataParameters: [SQLValue] = []
+            if let type {
+                metadataSQL += " and e.entity_type = ?"
+                metadataParameters.append(.text(type))
+            }
+            Self.appendTokenPredicates(
+                tokens,
+                columns: [
+                    "e.entity_type", "e.game_id", "e.name", "e.display_name",
+                    "e.subtitle", "e.description", "e.category", "e.subcategory",
+                    "e.rarity", "e.legality", "e.source_dataset",
+                ],
+                sql: &metadataSQL,
+                parameters: &metadataParameters
+            )
+            metadataSQL += """
+             order by case
+                        when lower(coalesce(e.display_name, e.name, e.game_id)) = ? then 0
+                        when lower(e.game_id) = ? then 1
+                        when lower(e.entity_type) = ? then 2
+                        else 3
+                      end,
+                      lower(coalesce(e.display_name, e.name, e.game_id))
+             limit ?
+            """
+            let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            metadataParameters.append(.text(normalizedQuery))
+            metadataParameters.append(.text(normalizedQuery))
+            metadataParameters.append(.text(normalizedQuery))
+            metadataParameters.append(.int(limit))
+            let metadata = try self.query(
+                metadataSQL,
+                parameters: metadataParameters,
+                map: Self.mapEntity
+            )
+
+            var ftsSQL = """
             select e.entity_type, e.game_id, e.name, e.display_name, e.subtitle, e.description,
                    e.category, e.subcategory, e.rarity, e.legality, e.base_value,
                    e.color_r, e.color_g, e.color_b, e.source_dataset, e.source_commit_sha
@@ -369,14 +416,23 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
                and e.game_id = nms_entities_fts.game_id
              where nms_entities_fts match ?
             """
-            var parameters: [SQLValue] = [.text(match)]
+            var ftsParameters: [SQLValue] = [.text(match)]
             if let type {
-                sql += " and e.entity_type = ?"
-                parameters.append(.text(type))
+                ftsSQL += " and e.entity_type = ?"
+                ftsParameters.append(.text(type))
             }
-            sql += " order by bm25(nms_entities_fts, 10.0, 10.0, 3.0, 1.0) limit ?"
-            parameters.append(.int(limit))
-            return try self.query(sql, parameters: parameters, map: Self.mapEntity)
+            ftsSQL += " order by bm25(nms_entities_fts, 10.0, 10.0, 3.0, 1.0) limit ?"
+            ftsParameters.append(.int(limit))
+            let indexed = try self.query(
+                ftsSQL,
+                parameters: ftsParameters,
+                map: Self.mapEntity
+            )
+            return Self.uniquePrefix(
+                metadata + indexed,
+                limit: limit,
+                key: { $0.id }
+            )
         }
     }
 
@@ -491,7 +547,12 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
     }
 
     func recipesProducing(type: String, id: String) throws -> [Recipe] {
-        try withLock {
+        try recipesProducing(type: type, id: id, limit: 10_000)
+    }
+
+    func recipesProducing(type: String, id: String, limit: Int) throws -> [Recipe] {
+        guard limit > 0 else { return [] }
+        return try withLock {
             try query(
                 """
                 select r.recipe_id, r.recipe_kind, r.output_entity_type, r.output_game_id,
@@ -504,8 +565,9 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
                    and e.game_id = r.output_game_id
                  where r.output_entity_type = ? and r.output_game_id = ?
                  order by r.recipe_kind, r.recipe_id
+                 limit ?
                 """,
-                parameters: [.text(type), .text(id)],
+                parameters: [.text(type), .text(id), .int(limit)],
                 map: Self.mapRecipe
             ).map { recipe in
                 var copy = recipe
@@ -516,7 +578,12 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
     }
 
     func recipesUsing(type: String, id: String) throws -> [Recipe] {
-        try withLock {
+        try recipesUsing(type: type, id: id, limit: 10_000)
+    }
+
+    func recipesUsing(type: String, id: String, limit: Int) throws -> [Recipe] {
+        guard limit > 0 else { return [] }
+        return try withLock {
             try query(
                 """
                 select r.recipe_id, r.recipe_kind, r.output_entity_type, r.output_game_id,
@@ -530,8 +597,9 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
                    and e.game_id = r.output_game_id
                  where i.ingredient_entity_type = ? and i.ingredient_game_id = ?
                  order by r.recipe_kind, r.recipe_id
+                 limit ?
                 """,
-                parameters: [.text(type), .text(id)],
+                parameters: [.text(type), .text(id), .int(limit)],
                 map: Self.mapRecipe
             ).map { recipe in
                 var copy = recipe
@@ -564,10 +632,67 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
         }
     }
 
-    func searchContent(query: String, dataset: String?, limit: Int = 20) throws -> [ContentRecord] {
-        guard let match = Self.ftsQuery(query), limit > 0 else { return [] }
+    func contentRecords(dataset: String, limit: Int = 100, offset: Int = 0) throws -> [ContentRecord] {
+        guard limit > 0, offset >= 0 else { return [] }
         return try withLock {
-            var sql = """
+            try query(
+                """
+                select dataset, external_id, source_ordinal, display_name,
+                       payload, source_commit_sha
+                  from nms_content_records
+                 where dataset = ?
+                 order by lower(coalesce(display_name, external_id)), source_ordinal
+                 limit ? offset ?
+                """,
+                parameters: [.text(dataset), .int(limit), .int(offset)],
+                map: Self.mapContent
+            )
+        }
+    }
+
+    func searchContent(query: String, dataset: String?, limit: Int = 20) throws -> [ContentRecord] {
+        let tokens = Self.searchTokens(query)
+        guard let match = Self.ftsQuery(query), !tokens.isEmpty, limit > 0 else { return [] }
+        return try withLock {
+            var metadataSQL = """
+            select c.dataset, c.external_id, c.source_ordinal, c.display_name,
+                   c.payload, c.source_commit_sha
+              from nms_content_records c
+             where 1 = 1
+            """
+            var metadataParameters: [SQLValue] = []
+            if let dataset {
+                metadataSQL += " and c.dataset = ?"
+                metadataParameters.append(.text(dataset))
+            }
+            Self.appendTokenPredicates(
+                tokens,
+                columns: ["c.dataset", "c.external_id", "c.display_name"],
+                sql: &metadataSQL,
+                parameters: &metadataParameters
+            )
+            metadataSQL += """
+             order by case
+                        when lower(coalesce(c.display_name, c.external_id)) = ? then 0
+                        when lower(c.external_id) = ? then 1
+                        when lower(replace(c.dataset, '_', ' ')) = ? then 2
+                        else 3
+                      end,
+                      lower(coalesce(c.display_name, c.external_id)), c.source_ordinal
+             limit ?
+            """
+            let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            metadataParameters.append(.text(normalizedQuery))
+            metadataParameters.append(.text(normalizedQuery))
+            metadataParameters.append(.text(normalizedQuery))
+            metadataParameters.append(.int(limit))
+            let metadata = try self.query(
+                metadataSQL,
+                parameters: metadataParameters,
+                map: Self.mapContent
+            )
+
+            var ftsSQL = """
             select c.dataset, c.external_id, c.source_ordinal, c.display_name,
                    c.payload, c.source_commit_sha
               from nms_content_fts
@@ -577,23 +702,23 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
                and c.source_ordinal = nms_content_fts.source_ordinal
              where nms_content_fts match ?
             """
-            var parameters: [SQLValue] = [.text(match)]
+            var ftsParameters: [SQLValue] = [.text(match)]
             if let dataset {
-                sql += " and c.dataset = ?"
-                parameters.append(.text(dataset))
+                ftsSQL += " and c.dataset = ?"
+                ftsParameters.append(.text(dataset))
             }
-            sql += " order by bm25(nms_content_fts, 5.0, 1.0) limit ?"
-            parameters.append(.int(limit))
-            return try self.query(sql, parameters: parameters) { stmt in
-                ContentRecord(
-                    dataset: Self.text(stmt, 0) ?? "",
-                    externalID: Self.text(stmt, 1) ?? "",
-                    sourceOrdinal: Int(sqlite3_column_int(stmt, 2)),
-                    displayName: Self.text(stmt, 3),
-                    payload: Self.text(stmt, 4) ?? "{}",
-                    sourceCommitSHA: Self.text(stmt, 5) ?? ""
-                )
-            }
+            ftsSQL += " order by bm25(nms_content_fts, 5.0, 1.0) limit ?"
+            ftsParameters.append(.int(limit))
+            let indexed = try self.query(
+                ftsSQL,
+                parameters: ftsParameters,
+                map: Self.mapContent
+            )
+            return Self.uniquePrefix(
+                metadata + indexed,
+                limit: limit,
+                key: { $0.id }
+            )
         }
     }
 
@@ -707,6 +832,17 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
         )
     }
 
+    private static func mapContent(_ stmt: OpaquePointer) -> ContentRecord {
+        ContentRecord(
+            dataset: text(stmt, 0) ?? "",
+            externalID: text(stmt, 1) ?? "",
+            sourceOrdinal: Int(sqlite3_column_int(stmt, 2)),
+            displayName: text(stmt, 3),
+            payload: text(stmt, 4) ?? "{}",
+            sourceCommitSHA: text(stmt, 5) ?? ""
+        )
+    }
+
     private static func text(_ stmt: OpaquePointer, _ index: Int32) -> String? {
         guard let pointer = sqlite3_column_text(stmt, index) else { return nil }
         let value = String(cString: pointer)
@@ -728,6 +864,36 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "%", with: "\\%")
             .replacingOccurrences(of: "_", with: "\\_")
+    }
+
+    private static func appendTokenPredicates(
+        _ tokens: [String],
+        columns: [String],
+        sql: inout String,
+        parameters: inout [SQLValue]
+    ) {
+        for token in tokens {
+            let predicates = columns.map { column in
+                "lower(coalesce(\(column), '')) like ? escape '\\'"
+            }
+            sql += " and (\(predicates.joined(separator: " or ")))"
+            let value = "%\(escapeLike(token))%"
+            parameters.append(contentsOf: repeatElement(.text(value), count: columns.count))
+        }
+    }
+
+    private static func uniquePrefix<T>(
+        _ values: [T],
+        limit: Int,
+        key: (T) -> String
+    ) -> [T] {
+        var seen: Set<String> = []
+        var result: [T] = []
+        for value in values where seen.insert(key(value)).inserted {
+            result.append(value)
+            if result.count == limit { break }
+        }
+        return result
     }
 
     private static let recipeSearchGlue: Set<String> = [

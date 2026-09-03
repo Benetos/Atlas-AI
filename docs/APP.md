@@ -106,8 +106,9 @@ automatic network fallback.
 
 The production pack must contain every table, index, payload, and preferred
 localization needed by the supported database capabilities. The three-entity
-Debug fixture is test data only and must never satisfy the Release gate. Pack
-delivery may download an immutable asset from Apple, but verification,
+fixture is bundled only with `AtlasTests` for focused mutation and corruption
+tests; it is not an app runtime fallback and must never satisfy the Debug or
+Release app gate. Pack delivery may download an immutable asset from Apple, but verification,
 activation, all SQL execution, search, joins, and model tool calls occur on the
 device. Updates replace the verified local snapshot rather than changing query
 execution to a hosted database.
@@ -123,10 +124,10 @@ Delivery:
   read-only boundaries, moves the immutable release into place, then atomically
   flips a small active/previous pointer. A corrupt active release is replaced
   automatically by the prior verified copy.
-- **Debug:** a generated three-entity preview SQLite and matching `preview`
-  sidecar are bundled for simulator work. The preview is explicitly excluded
-  from Release resources; `NMSStore` hides the source difference after
-  verification.
+- **Debug:** the complete ignored `build/nms-sqlite` production pair is bundled
+  for simulator work and hosted integration tests. Preparing the full pinned
+  pack is a build prerequisite; missing files fail clearly instead of opening a
+  misleading partial catalog. Both bundled files are excluded from Release.
 - If the pack is missing, show a blocking preparation/error state with retry.
   Download, verification, and activation progress are shown. Do not fall
   through to an empty UI or substitute a remote database.
@@ -228,9 +229,12 @@ constructed only from `SQLiteNMSStore`.
 These operations remain outside the model and database-tool dependency
 graph. Their results are provenance-tagged supplemental cards, are never
 silently folded into canonical recipes, and never substitute for a local miss
-or failure. The current UI returns one complete spoken answer; persistent model
-sessions, streaming, an injectable model-planning boundary, and evidence-linked
-generated output are beta milestones.
+or failure. The UI waits up to eight seconds for a concise on-device narration
+grounded in the SQLite result, then returns one answer with the authoritative
+cards. If the model fails or reaches that bound, Atlas returns the verified
+deterministic database answer instead of hanging. Persistent model sessions,
+streaming, an injectable model-planning boundary, and evidence-linked generated
+output are beta milestones.
 Durable UI is cards. Tapping a card opens the native entity, recipe, feature
 record, or Safari view.
 

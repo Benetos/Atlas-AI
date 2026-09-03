@@ -106,17 +106,39 @@ class AtlasXcodeprojTests(unittest.TestCase):
                 f"{name} must be an explicit Sources build file",
             )
 
-    def test_resources_include_preview_pair_not_plists_or_entitlements(self) -> None:
+    def test_resources_separate_full_debug_pack_from_test_fixture(self) -> None:
         self.assertIn("/* Assets.xcassets in Resources */", self.pbx)
-        self.assertIn("/* nms-reference.sqlite in Resources */", self.pbx)
-        self.assertIn("/* pack-manifest.json in Resources */", self.pbx)
+        self.assertIn("/* Full nms-reference.sqlite in Resources */", self.pbx)
+        self.assertIn("/* Full pack-manifest.json in Resources */", self.pbx)
+        self.assertIn("/* Preview nms-reference.sqlite in Resources */", self.pbx)
+        self.assertIn("/* Preview pack-manifest.json in Resources */", self.pbx)
+        self.assertIn("path = ../../build/nms-sqlite;", self.pbx)
+        self.assertTrue((ATLAS_TESTS / "Fixtures" / "nms-reference.sqlite").is_file())
+        self.assertTrue((ATLAS_TESTS / "Fixtures" / "pack-manifest.json").is_file())
+
+        app_resources = re.search(
+            r"F62869CB11D62F29227F2FE5 /\* Resources \*/ = \{.*?\n\s*\};",
+            self.pbx,
+            re.DOTALL,
+        )
+        test_resources = re.search(
+            r"01B3CB002BD05C578A942EEB /\* Resources \*/ = \{.*?\n\s*\};",
+            self.pbx,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(app_resources)
+        self.assertIsNotNone(test_resources)
+        self.assertIn("/* Full nms-reference.sqlite in Resources */", app_resources.group(0))
+        self.assertNotIn("/* Preview nms-reference.sqlite in Resources */", app_resources.group(0))
+        self.assertIn("/* Preview nms-reference.sqlite in Resources */", test_resources.group(0))
+        self.assertNotIn("/* Full nms-reference.sqlite in Resources */", test_resources.group(0))
         self.assertIn("/* PrivacyInfo.xcprivacy in Resources */", self.pbx)
         self.assertNotIn("/* Info.plist in Resources */", self.pbx)
         self.assertNotIn(".entitlements in Resources */", self.pbx)
         self.assertIn("path = Info.plist;", self.pbx)
         self.assertIn("CODE_SIGN_ENTITLEMENTS = Atlas/Atlas.entitlements;", self.pbx)
 
-    def test_release_excludes_both_preview_pack_files(self) -> None:
+    def test_release_excludes_both_bundled_pack_files(self) -> None:
         debug = build_configuration(
             self.pbx, "Debug", "PRODUCT_BUNDLE_IDENTIFIER = ai.atlas.nms;"
         )

@@ -34,6 +34,18 @@ final class AppModel {
         isPackUpdateRunning = true
         packStatus = .locating
         do {
+            #if DEBUG
+            // Normal development and hosted integration tests run against the
+            // complete generated pack. The small disposable fixture belongs to
+            // AtlasTests only and must never masquerade as the app's catalog.
+            let bundled = try PackValidator(requiredRole: "production").validate(
+                PackLocator.bundledDebugPack()
+            )
+            try open(bundled)
+            packStatus = .ready
+            packUpdateMessage = "Using the full pinned Debug database."
+            isPackUpdateRunning = false
+            #else
             let activation = try makeActivationStore()
             if let installed = try await activation.current() {
                 try open(installed)
@@ -42,16 +54,6 @@ final class AppModel {
                 await refreshPack()
                 return
             }
-
-            #if DEBUG
-            let preview = try PackValidator(requiredRole: "preview").validate(
-                PackLocator.bundledPreview()
-            )
-            try open(preview)
-            packStatus = .ready
-            packUpdateMessage = "Using the Debug preview database."
-            isPackUpdateRunning = false
-            #else
             isPackUpdateRunning = false
             await refreshPack(requireLatestVersion: false)
             #endif

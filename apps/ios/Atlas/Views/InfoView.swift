@@ -9,14 +9,17 @@ struct InfoView: View {
                 Section("Local snapshot") {
                     LabeledContent(
                         "Database",
-                        value: model.packRole == "production" ? "Full on-device pack" : "Debug preview"
+                        value: databaseLabel
                     )
                     LabeledContent("Source commit", value: shortSHA(model.pack?.sourceCommitSHA))
                     LabeledContent("Contract", value: "\(model.pack?.contractVersion ?? 1)")
-                    if let counts = model.pack?.countsJSON {
-                        Text(counts)
-                            .font(.footnote.monospaced())
-                            .foregroundStyle(.secondary)
+                    if let pack = model.pack {
+                        LabeledContent("Items", value: formattedCount(pack.counts["entities"]))
+                        LabeledContent("Recipes", value: formattedCount(pack.counts["recipes"]))
+                        LabeledContent(
+                            "Category records",
+                            value: formattedCount(pack.counts["content_records"])
+                        )
                     }
                     if let recovery = model.packRecoveryMessage {
                         Text(recovery)
@@ -116,5 +119,17 @@ struct InfoView: View {
     private func shortSHA(_ value: String?) -> String {
         guard let value, !value.isEmpty else { return "—" }
         return String(value.prefix(12))
+    }
+
+    private var databaseLabel: String {
+        guard let pack = model.pack else { return "Unavailable" }
+        if pack.searchableRecordCount < 1_000 {
+            return "Sample Debug database"
+        }
+        return model.packRole == "production" ? "Full on-device database" : "Full Debug database"
+    }
+
+    private func formattedCount(_ value: Int?) -> String {
+        (value ?? 0).formatted()
     }
 }

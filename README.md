@@ -11,9 +11,10 @@ templated summaries, and native cards are currently authoritative. Apple’s
 `SystemLanguageModel.default` may narrate those local results when available,
 but structural claim/evidence validation of generated prose is a beta target;
 generated narration is not itself a canonical data source. There is no
-cloud-model fallback. Every player-facing database capability also runs against
-the installed SQLite pack; Supabase is not a runtime dependency for canonical
-answers.
+cloud-model fallback, and narration falls back to the verified SQLite answer
+after eight seconds instead of hanging. Every player-facing database capability
+also runs against the installed SQLite pack; Supabase is not a runtime
+dependency for canonical answers.
 
 The upstream repository is large and contains thousands of binary assets.
 Atlas-AI does **not** vendor that repository or its generated data. Instead, it
@@ -97,12 +98,15 @@ python3 scripts/build_nms_sqlite.py \
 ```
 
 The SQLite file and pack sidecar stay under ignored `build/` paths. The iOS
-app loads that snapshot from a Debug bundle or from an essential Apple-hosted
-Background Asset. See [docs/APP.md](docs/APP.md).
+Debug target embeds that full generated snapshot directly; a missing snapshot
+fails the build rather than substituting the tiny test fixture. Release obtains
+the same production data from an essential Apple-hosted Background Asset. See
+[docs/APP.md](docs/APP.md). `./scripts/prepare_ios_debug_pack.sh` performs the
+source sync, transform, and pack build in one step for local Xcode work.
 
 Build the validated Apple-hosted archive (including the SQLite file and
 sidecar) with `./scripts/package_nms_asset_pack.sh`. Release builds embed the
-managed downloader extension but exclude the Debug preview database.
+managed downloader extension but exclude the Debug-bundled database.
 
 ## Source and licensing boundary
 

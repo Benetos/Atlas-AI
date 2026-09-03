@@ -670,7 +670,7 @@ def parse_args() -> argparse.Namespace:
         "--pack-role",
         choices=sorted(PACK_ROLES),
         default="production",
-        help="Mark the sidecar as a production or Debug preview pack",
+        help="Mark the sidecar as a production pack or a small test-fixture preview",
     )
     return parser.parse_args()
 

@@ -85,6 +85,13 @@ if [[ -z "${app_bundle}" ]]; then
   esac
 
   command -v xcodebuild >/dev/null 2>&1 || fail "xcodebuild is not available"
+  if [[ "${configuration}" == "Debug" ]]; then
+    generated_pack_dir="${repo_root}/build/nms-sqlite"
+    [[ -f "${generated_pack_dir}/nms-reference.sqlite" ]] \
+      || fail "full Debug database is missing; run ./scripts/prepare_ios_debug_pack.sh"
+    [[ -f "${generated_pack_dir}/pack-manifest.json" ]] \
+      || fail "full Debug database sidecar is missing; run ./scripts/prepare_ios_debug_pack.sh"
+  fi
   xcodebuild \
     -project "${project_path}" \
     -scheme "${scheme}" \
@@ -129,8 +136,8 @@ executable_name="$(plutil -extract CFBundleExecutable raw -o - "${info_plist}" 2
 [[ -n "${executable_name}" ]] || fail "CFBundleExecutable is empty"
 
 app_executable="${app_bundle}/${executable_name}"
-preview_sqlite="${app_bundle}/nms-reference.sqlite"
-preview_sidecar="${app_bundle}/pack-manifest.json"
+bundled_sqlite="${app_bundle}/nms-reference.sqlite"
+bundled_sidecar="${app_bundle}/pack-manifest.json"
 privacy_manifest="${app_bundle}/PrivacyInfo.xcprivacy"
 downloader_bundle="${app_bundle}/Extensions/AtlasDownloader.appex"
 downloader_info_plist="${downloader_bundle}/Info.plist"
@@ -164,39 +171,66 @@ downloader_executable="${downloader_bundle}/${downloader_executable_name}"
   || fail "AtlasDownloader executable is missing or not executable: ${downloader_executable}"
 
 if [[ "${configuration}" == "Debug" ]]; then
-  [[ -f "${preview_sqlite}" ]] \
-    || fail "preview SQLite pack is missing: ${preview_sqlite}"
-  [[ -f "${preview_sidecar}" ]] \
-    || fail "preview pack sidecar is missing: ${preview_sidecar}"
+  [[ -f "${bundled_sqlite}" ]] \
+    || fail "full Debug SQLite pack is missing: ${bundled_sqlite}"
+  [[ -f "${bundled_sidecar}" ]] \
+    || fail "full Debug pack sidecar is missing: ${bundled_sidecar}"
 
   command -v sqlite3 >/dev/null 2>&1 || fail "sqlite3 is not available"
-  quick_check="$(sqlite3 "${preview_sqlite}" "pragma quick_check;")" \
+  quick_check="$(sqlite3 "${bundled_sqlite}" "pragma quick_check;")" \
     || fail "SQLite quick_check could not run"
   [[ "${quick_check}" == "ok" ]] \
     || fail "SQLite quick_check returned: ${quick_check}"
+  foreign_key_errors="$(sqlite3 "${bundled_sqlite}" "pragma foreign_key_check;")" \
+    || fail "SQLite foreign_key_check could not run"
+  [[ -z "${foreign_key_errors}" ]] \
+    || fail "full Debug database contains invalid foreign keys"
 
-  sidecar_role="$(plutil -extract pack_role raw -o - "${preview_sidecar}" 2>/dev/null)" \
-    || fail "pack_role is missing from preview sidecar"
-  [[ "${sidecar_role}" == "preview" ]] \
-    || fail "Debug pack_role must be preview (received: ${sidecar_role})"
+  sidecar_role="$(plutil -extract pack_role raw -o - "${bundled_sidecar}" 2>/dev/null)" \
+    || fail "pack_role is missing from full Debug sidecar"
+  [[ "${sidecar_role}" == "production" ]] \
+    || fail "Debug pack_role must be production (received: ${sidecar_role})"
 
-  sidecar_sqlite_file="$(plutil -extract sqlite.file raw -o - "${preview_sidecar}" 2>/dev/null)" \
-    || fail "sqlite.file is missing from preview sidecar"
+  sidecar_sqlite_file="$(plutil -extract sqlite.file raw -o - "${bundled_sidecar}" 2>/dev/null)" \
+    || fail "sqlite.file is missing from full Debug sidecar"
   [[ "${sidecar_sqlite_file}" == "nms-reference.sqlite" ]] \
-    || fail "preview sidecar names the wrong SQLite file: ${sidecar_sqlite_file}"
+    || fail "full Debug sidecar names the wrong SQLite file: ${sidecar_sqlite_file}"
+
+  for count_spec in \
+    "entities:2597" \
+    "localizations_preferred:79731" \
+    "recipes:2181" \
+    "recipe_ingredients:4003" \
+    "content_records:4752"; do
+    count_key="${count_spec%%:*}"
+    expected_count="${count_spec##*:}"
+    actual_count="$(plutil -extract "counts.${count_key}" raw -o - "${bundled_sidecar}" 2>/dev/null)" \
+      || fail "counts.${count_key} is missing from full Debug sidecar"
+    [[ "${actual_count}" == "${expected_count}" ]] \
+      || fail "full Debug ${count_key} count must be ${expected_count} (received: ${actual_count})"
+  done
+
+  entity_fts_count="$(sqlite3 "${bundled_sqlite}" "select count(*) from nms_entities_fts;")" \
+    || fail "could not count the entity search index"
+  content_fts_count="$(sqlite3 "${bundled_sqlite}" "select count(*) from nms_content_fts;")" \
+    || fail "could not count the feature search index"
+  [[ "${entity_fts_count}" == "2597" ]] \
+    || fail "entity search index is incomplete (received: ${entity_fts_count})"
+  [[ "${content_fts_count}" == "4752" ]] \
+    || fail "feature search index is incomplete (received: ${content_fts_count})"
 
   command -v shasum >/dev/null 2>&1 || fail "shasum is not available"
-  declared_sha256="$(plutil -extract sqlite.sha256 raw -o - "${preview_sidecar}" 2>/dev/null)" \
-    || fail "sqlite.sha256 is missing from preview sidecar"
-  actual_sha256="$(shasum -a 256 "${preview_sqlite}" | awk '{print $1}')" \
-    || fail "could not hash preview SQLite pack"
+  declared_sha256="$(plutil -extract sqlite.sha256 raw -o - "${bundled_sidecar}" 2>/dev/null)" \
+    || fail "sqlite.sha256 is missing from full Debug sidecar"
+  actual_sha256="$(shasum -a 256 "${bundled_sqlite}" | awk '{print $1}')" \
+    || fail "could not hash full Debug SQLite pack"
   [[ "${actual_sha256}" == "${declared_sha256}" ]] \
-    || fail "preview SQLite SHA-256 does not match pack-manifest.json"
+    || fail "full Debug SQLite SHA-256 does not match pack-manifest.json"
 else
-  [[ ! -e "${preview_sqlite}" ]] \
-    || fail "Release bundle must not contain the preview SQLite pack: ${preview_sqlite}"
-  [[ ! -e "${preview_sidecar}" ]] \
-    || fail "Release bundle must not contain the preview pack sidecar: ${preview_sidecar}"
+  [[ ! -e "${bundled_sqlite}" ]] \
+    || fail "Release bundle must not contain a bundled SQLite pack: ${bundled_sqlite}"
+  [[ ! -e "${bundled_sidecar}" ]] \
+    || fail "Release bundle must not contain a bundled pack sidecar: ${bundled_sidecar}"
 fi
 
 echo "Atlas iOS ${configuration} bundle verified"
@@ -204,10 +238,10 @@ echo "  bundle: ${app_bundle}"
 echo "  executable: ${app_executable}"
 echo "  downloader extension: ${downloader_bundle}"
 if [[ "${configuration}" == "Debug" ]]; then
-  echo "  preview pack: ${preview_sqlite}"
-  echo "  preview sidecar: ${preview_sidecar}"
+  echo "  full Debug pack: ${bundled_sqlite}"
+  echo "  full Debug sidecar: ${bundled_sidecar}"
 else
-  echo "  preview pack: absent (required for Release)"
-  echo "  preview sidecar: absent (required for Release)"
+  echo "  bundled pack: absent (required for Release)"
+  echo "  bundled sidecar: absent (required for Release)"
 fi
 echo "  privacy manifest: ${privacy_manifest}"

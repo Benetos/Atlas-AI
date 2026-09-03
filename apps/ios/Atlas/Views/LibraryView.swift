@@ -17,22 +17,74 @@ struct LibraryView: View {
     private let pageSize = 60
 
     enum BrowseSection: String, CaseIterable, Identifiable {
-        case products
-        case substances
+        case products = "product"
+        case substances = "substance"
         case technology
         case crafting
         case refining
         case cooking
+        case bait
+        case buildingParts = "building_parts"
+        case corvetteParts = "corvette_parts"
+        case expeditions
+        case fish
+        case fossils
+        case legacyItems = "legacy_items"
+        case buildingBlueprints = "purchaseable_building_blueprints"
+        case shipParts = "ship_parts"
+        case specialPurchases = "special_purchases"
+        case specialRewards = "special_rewards"
+        case stories
 
         var id: String { rawValue }
-        var title: String { rawValue.capitalized }
+
+        var title: String {
+            switch self {
+            case .products: "Products"
+            case .substances: "Substances"
+            case .technology: "Technology"
+            case .crafting: "Crafting"
+            case .refining: "Refining"
+            case .cooking: "Cooking"
+            case .bait: "Bait"
+            case .buildingParts: "Building Parts"
+            case .corvetteParts: "Corvette Parts"
+            case .expeditions: "Expeditions"
+            case .fish: "Fish"
+            case .fossils: "Fossils"
+            case .legacyItems: "Legacy Items"
+            case .buildingBlueprints: "Building Blueprints"
+            case .shipParts: "Ship Parts"
+            case .specialPurchases: "Special Purchases"
+            case .specialRewards: "Special Rewards"
+            case .stories: "Stories"
+            }
+        }
+
+        var entityType: String? {
+            switch self {
+            case .products, .substances, .technology: rawValue
+            default: nil
+            }
+        }
+
+        var recipeKind: String? {
+            switch self {
+            case .crafting, .refining, .cooking: rawValue
+            default: nil
+            }
+        }
+
+        var contentDataset: String? {
+            entityType == nil && recipeKind == nil ? rawValue : nil
+        }
     }
 
     enum SearchScope: String, CaseIterable, Identifiable {
         case all
         case items
         case recipes
-        case features
+        case categories
 
         var id: String { rawValue }
         var title: String { rawValue.capitalized }
@@ -59,7 +111,7 @@ struct LibraryView: View {
                     ContentDetailView(dataset: dataset, externalID: id, sourceOrdinal: sourceOrdinal)
                 }
             }
-            .task(id: browsing) {
+            .task(id: browseTaskID) {
                 await loadBrowse(reset: true)
             }
             .task(id: searchTaskID) {
@@ -71,6 +123,17 @@ struct LibraryView: View {
     @ViewBuilder
     private var browseSection: some View {
         Section("Browse") {
+            if isSampleDatabase {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Sample database", systemImage: "shippingbox")
+                        .font(.headline)
+                    Text("This build contains only \(databaseCountSummary). Categories without a sample will be empty until the full Debug database is bundled.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+
             Picker("Category", selection: $browsing) {
                 ForEach(BrowseSection.allCases) { section in
                     Text(section.title).tag(section)
@@ -93,6 +156,16 @@ struct LibraryView: View {
                     ProgressView()
                     Spacer()
                 }
+            } else if browseResults.isEmpty && browseError == nil {
+                ContentUnavailableView(
+                    "No \(browsing.title)",
+                    systemImage: "tray",
+                    description: Text(
+                        isSampleDatabase
+                            ? "This category is not represented in the bundled sample database."
+                            : "This database has no records in this category."
+                    )
+                )
             } else if browseHasMore && browseError == nil {
                 Button("Load more") {
                     Task { await loadBrowse(reset: false) }
@@ -169,7 +242,7 @@ struct LibraryView: View {
     }
 
     private var searchTaskID: String {
-        "\(searchScope.rawValue):\(trimmedQuery)"
+        "\(searchScope.rawValue):\(trimmedQuery):\(model.pack?.generatedAt ?? "no-pack")"
     }
 
     @MainActor
@@ -205,7 +278,7 @@ struct LibraryView: View {
         if searchScope == .all || searchScope == .recipes {
             cards.append(contentsOf: try store.searchRecipes(query: trimmedQuery, kind: nil, limit: 30).map(AtlasCard.recipe))
         }
-        if searchScope == .all || searchScope == .features {
+        if searchScope == .all || searchScope == .categories {
             cards.append(contentsOf: try store.searchContent(query: trimmedQuery, dataset: nil, limit: 20).map(AtlasCard.content))
         }
         var seen: Set<String> = []
@@ -227,12 +300,18 @@ struct LibraryView: View {
 
         do {
             let page: [AtlasCard]
-            switch browsing {
-            case .products, .substances, .technology:
-                let type = entityType(for: browsing)
+            if let type = browsing.entityType {
                 page = try store.entities(type: type, limit: pageSize, offset: browseOffset).map(AtlasCard.entity)
-            case .crafting, .refining, .cooking:
-                page = try store.recipes(kind: browsing.rawValue, limit: pageSize, offset: browseOffset).map(AtlasCard.recipe)
+            } else if let kind = browsing.recipeKind {
+                page = try store.recipes(kind: kind, limit: pageSize, offset: browseOffset).map(AtlasCard.recipe)
+            } else if let dataset = browsing.contentDataset {
+                page = try store.contentRecords(
+                    dataset: dataset,
+                    limit: pageSize,
+                    offset: browseOffset
+                ).map(AtlasCard.content)
+            } else {
+                page = []
             }
             browseResults.append(contentsOf: page)
             browseOffset += page.count
@@ -243,12 +322,23 @@ struct LibraryView: View {
         }
     }
 
-    private func entityType(for section: BrowseSection) -> String {
-        switch section {
-        case .products: "product"
-        case .substances: "substance"
-        case .technology: "technology"
-        default: "product"
-        }
+    private var browseTaskID: String {
+        "\(browsing.id):\(model.pack?.generatedAt ?? "no-pack")"
+    }
+
+    private var packCounts: [String: Int] {
+        model.pack?.counts ?? [:]
+    }
+
+    private var isSampleDatabase: Bool {
+        let total = model.pack?.searchableRecordCount ?? 0
+        return total > 0 && total < 1_000
+    }
+
+    private var databaseCountSummary: String {
+        let entities = packCounts["entities", default: 0]
+        let recipes = packCounts["recipes", default: 0]
+        let content = packCounts["content_records", default: 0]
+        return "\(entities) items, \(recipes) recipes, and \(content) category record\(content == 1 ? "" : "s")"
     }
 }

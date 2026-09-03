@@ -43,6 +43,24 @@ final class AtlasQueryPlanTests: XCTestCase {
         XCTAssertTrue(plan.shouldBrowseRecipes)
     }
 
+    func testPluralEntityCategoryBrowsesTheFullType() {
+        let plan = AtlasQueryPlan(prompt: "Show me all technologies")
+
+        XCTAssertEqual(plan.source, .local)
+        XCTAssertEqual(plan.goal, .browseEntities)
+        XCTAssertEqual(plan.entityType, "technology")
+        XCTAssertNil(plan.localQuery)
+        XCTAssertTrue(plan.shouldBrowseEntities)
+    }
+
+    func testPluralItemQueryIncludesConservativeSingularFallback() {
+        let plan = AtlasQueryPlan(prompt: "How do I make warp cells?")
+
+        XCTAssertEqual(plan.goal, .recipe)
+        XCTAssertEqual(plan.localQuery, "warp cells")
+        XCTAssertEqual(plan.localSearchQueries, ["warp cells", "warp cell"])
+    }
+
     func testCurrentExpeditionPromptUsesWeb() {
         let plan = AtlasQueryPlan(
             prompt: "Search the web for current No Man's Sky expedition"
@@ -71,8 +89,8 @@ final class AtlasQueryPlanTests: XCTestCase {
 }
 
 final class OfflineAtlasTests: XCTestCase {
-    func testPreviewSQLiteQueriesCanonicalData() throws {
-        let store = try previewStore()
+    func testFullSQLiteQueriesCanonicalData() throws {
+        let store = try fullStore()
 
         let manifest = try store.manifest()
         XCTAssertEqual(manifest.packSchemaVersion, 1)
@@ -91,15 +109,15 @@ final class OfflineAtlasTests: XCTestCase {
             limit: 8
         )
         XCTAssertTrue(circuitBoard.contains {
-            $0.recipeKind == "crafting" && $0.outputGameID == "CIRCUITBOARD"
+            $0.recipeKind == "crafting" && $0.outputGameID == "FARMPROD9"
         })
 
         let cooking = try store.recipes(kind: "cooking", limit: 8, offset: 0)
         XCTAssertFalse(cooking.isEmpty)
     }
 
-    func testPreviewPackPassesIntegrityCountsAndReadOnlyChecks() throws {
-        let store = try previewStore()
+    func testFullPackPassesExactCountsIntegrityAndReadOnlyChecks() throws {
+        let store = try fullStore()
         let manifest = try store.manifest()
         let recordedCounts = try XCTUnwrap(
             manifest.countsJSON.data(using: .utf8).flatMap {
@@ -108,12 +126,66 @@ final class OfflineAtlasTests: XCTestCase {
         )
 
         XCTAssertEqual(try store.databaseCounts(), recordedCounts)
+        XCTAssertEqual(manifest.counts, recordedCounts)
+        XCTAssertEqual(recordedCounts, [
+            "entities": 2_597,
+            "localizations_preferred": 79_731,
+            "recipes": 2_181,
+            "recipe_ingredients": 4_003,
+            "content_records": 4_752,
+        ])
+        XCTAssertEqual(
+            manifest.searchableRecordCount,
+            recordedCounts["entities", default: 0]
+                + recordedCounts["recipes", default: 0]
+                + recordedCounts["content_records", default: 0]
+        )
         XCTAssertNoThrow(try store.validateIntegrity())
         XCTAssertNoThrow(try store.validateReadOnlyBoundary())
     }
 
+    func testSearchIncludesMetadataAndFeatureCategoriesCanBeBrowsed() throws {
+        let store = try fullStore()
+
+        let substances = try store.searchEntities(query: "substance", type: nil, limit: 8)
+        XCTAssertFalse(substances.isEmpty)
+        XCTAssertTrue(substances.allSatisfy { $0.entityType == "substance" })
+
+        let expeditions = try store.searchContent(query: "expeditions", dataset: nil, limit: 8)
+        XCTAssertFalse(expeditions.isEmpty)
+        XCTAssertTrue(expeditions.allSatisfy { $0.dataset == "expeditions" })
+
+        let browsed = try store.contentRecords(dataset: "expeditions", limit: 2, offset: 0)
+        XCTAssertFalse(browsed.isEmpty)
+        XCTAssertTrue(browsed.allSatisfy { $0.dataset == "expeditions" })
+
+        let expectedDatasets = [
+            "bait", "building_parts", "corvette_parts", "expeditions", "fish",
+            "fossils", "legacy_items", "purchaseable_building_blueprints",
+            "ship_parts", "special_purchases", "special_rewards", "stories",
+        ]
+        for dataset in expectedDatasets {
+            XCTAssertFalse(
+                try store.contentRecords(dataset: dataset, limit: 1, offset: 0).isEmpty,
+                "The full pack is missing the \(dataset) browse category."
+            )
+        }
+    }
+
+    func testRecipeRelationshipQueriesCanBeBounded() throws {
+        let store = try fullStore()
+
+        let using = try store.recipesUsing(type: "substance", id: "LAND1", limit: 1)
+        XCTAssertEqual(using.count, 1)
+        XCTAssertTrue(using[0].ingredients.contains { $0.gameID == "LAND1" })
+
+        XCTAssertTrue(
+            try store.recipesProducing(type: "substance", id: "LAND1", limit: 0).isEmpty
+        )
+    }
+
     func testManifestRequiresExactlyOneRow() throws {
-        let url = try mutablePreviewURL()
+        let url = try mutableFixtureURL()
         try execute(
             "insert into pack_manifest select * from pack_manifest",
             at: url
@@ -173,7 +245,7 @@ final class OfflineAtlasTests: XCTestCase {
     }
 
     func testManifestRejectsIncompleteFTSIndex() throws {
-        let url = try mutablePreviewURL()
+        let url = try mutableFixtureURL()
         try execute(
             "delete from nms_entities_fts where rowid = (select min(rowid) from nms_entities_fts)",
             at: url
@@ -186,7 +258,7 @@ final class OfflineAtlasTests: XCTestCase {
     }
 
     func testManifestRejectsRowsFromAnotherSourceCommit() throws {
-        let url = try mutablePreviewURL()
+        let url = try mutableFixtureURL()
         try execute(
             "update nms_entities set source_commit_sha = '0000000000000000000000000000000000000000' where rowid = (select min(rowid) from nms_entities)",
             at: url
@@ -199,7 +271,7 @@ final class OfflineAtlasTests: XCTestCase {
     }
 
     func testIntegrityRejectsBrokenForeignKey() throws {
-        let url = try mutablePreviewURL()
+        let url = try mutableFixtureURL()
         try execute(
             "update nms_recipes set output_game_id = 'MISSING_ENTITY' where rowid = (select min(rowid) from nms_recipes)",
             at: url
@@ -212,7 +284,7 @@ final class OfflineAtlasTests: XCTestCase {
     }
 
     func testRecipeQueriesPropagateIngredientTableFailures() throws {
-        let url = try mutablePreviewURL()
+        let url = try mutableFixtureURL()
         try execute("drop table nms_recipe_ingredients", at: url)
         let store = try SQLiteNMSStore(fileURL: url)
 
@@ -223,7 +295,7 @@ final class OfflineAtlasTests: XCTestCase {
     }
 
     func testConversationFailsClosedWhenARequiredRecipeTableIsMissing() async throws {
-        let url = try mutablePreviewURL()
+        let url = try mutableFixtureURL()
         try execute("drop table nms_recipe_ingredients", at: url)
         let settings = AppSettings()
         settings.liveAtlasEnabled = false
@@ -243,7 +315,7 @@ final class OfflineAtlasTests: XCTestCase {
     #if canImport(FoundationModels)
     @available(iOS 26.0, *)
     func testEveryModelDatabaseToolUsesTheInstalledPack() async throws {
-        let store = try previewStore()
+        let store = try fullStore()
         let tools = LocalDatabaseToolRegistry.make(store: store)
 
         XCTAssertEqual(tools.map(\.name), LocalDatabaseToolRegistry.expectedNames)
@@ -251,27 +323,28 @@ final class OfflineAtlasTests: XCTestCase {
         let entities = try await SearchEntitiesTool(store: store).call(
             arguments: .init(query: "Ferrite Dust", entityType: nil)
         )
-        XCTAssertTrue(entities.contains("FUEL1"))
+        XCTAssertTrue(entities.contains("LAND1"))
 
         let entity = try await GetEntityTool(store: store).call(
-            arguments: .init(entityType: "substance", gameId: "FUEL1")
+            arguments: .init(entityType: "substance", gameId: "LAND1")
         )
         XCTAssertTrue(entity.contains("Ferrite Dust"))
 
         let produced = try await RecipesForTool(store: store).call(
-            arguments: .init(entityType: "substance", gameId: "FUEL1")
+            arguments: .init(entityType: "substance", gameId: "LAND1")
         )
-        XCTAssertTrue(produced.contains("refining:substance:FUEL1:0"))
+        XCTAssertTrue(produced.contains("refining:substance:LAND1:0"))
 
         let consumed = try await RecipesUsingTool(store: store).call(
-            arguments: .init(entityType: "substance", gameId: "FUEL1")
+            arguments: .init(entityType: "substance", gameId: "LAND1")
         )
-        XCTAssertTrue(consumed.contains("crafting:product:CIRCUITBOARD:0"))
+        XCTAssertTrue(consumed.contains("crafting:product:"))
 
         let content = try await SearchContentTool(store: store).call(
             arguments: .init(query: "Pioneers", dataset: nil)
         )
-        XCTAssertTrue(content.contains("EXPEDITION_1"))
+        XCTAssertTrue(content.contains("The Pioneers"))
+        XCTAssertTrue(content.contains("expeditions"))
     }
     #endif
 
@@ -286,8 +359,7 @@ final class OfflineAtlasTests: XCTestCase {
         })
         XCTAssertTrue(reply.cards.contains { card in
             guard case .recipe(let recipe) = card else { return false }
-            return recipe.outputGameID == "FUEL1"
-                || recipe.ingredients.contains { $0.gameID == "FUEL1" }
+            return recipe.ingredients.contains { $0.gameID == "LAND1" }
         })
     }
 
@@ -298,12 +370,12 @@ final class OfflineAtlasTests: XCTestCase {
         XCTAssertFalse(reply.text.isEmpty)
         XCTAssertTrue(reply.cards.contains { card in
             guard case .entity(let entity) = card else { return false }
-            return entity.gameID == "CIRCUITBOARD"
+            return entity.gameID == "FARMPROD9"
         })
         XCTAssertTrue(reply.cards.contains { card in
             guard case .recipe(let recipe) = card else { return false }
             return recipe.recipeKind == "crafting"
-                && recipe.outputGameID == "CIRCUITBOARD"
+                && recipe.outputGameID == "FARMPROD9"
         })
     }
 
@@ -312,9 +384,14 @@ final class OfflineAtlasTests: XCTestCase {
         let reply = await controller.reply(to: "How do I cook food?")
 
         XCTAssertFalse(reply.text.isEmpty)
+        XCTAssertTrue(reply.text.contains("cooking recipes"))
         XCTAssertTrue(reply.cards.contains { card in
             guard case .recipe(let recipe) = card else { return false }
             return recipe.recipeKind == "cooking"
+        })
+        XCTAssertFalse(reply.cards.contains { card in
+            if case .entity = card { return true }
+            return false
         })
     }
 
@@ -322,24 +399,28 @@ final class OfflineAtlasTests: XCTestCase {
         let settings = AppSettings()
         settings.liveAtlasEnabled = false
         settings.webSearchEnabled = false
-        return AtlasSessionController(store: try previewStore(), settings: settings)
+        return AtlasSessionController(store: try fullStore(), settings: settings)
     }
 
-    private func previewStore() throws -> SQLiteNMSStore {
-        try SQLiteNMSStore(fileURL: previewURL())
+    private func fullStore() throws -> SQLiteNMSStore {
+        try SQLiteNMSStore(fileURL: fullPackURL())
     }
 
-    private func previewURL() throws -> URL {
-        let bundles = [Bundle.main, Bundle(for: Self.self)]
-        guard let url = bundles.lazy.compactMap({
-            $0.url(forResource: "nms-reference", withExtension: "sqlite")
-        }).first else {
-            throw XCTSkip("The host app does not contain the preview SQLite pack.")
-        }
-        return url
+    private func fullPackURL() throws -> URL {
+        try XCTUnwrap(
+            Bundle.main.url(forResource: "nms-reference", withExtension: "sqlite"),
+            "Hosted Atlas tests require the full generated app database."
+        )
     }
 
-    private func mutablePreviewURL() throws -> URL {
+    private func fixtureURL() throws -> URL {
+        try XCTUnwrap(
+            Bundle(for: Self.self).url(forResource: "nms-reference", withExtension: "sqlite"),
+            "The AtlasTests mutation fixture is missing."
+        )
+    }
+
+    private func mutableFixtureURL() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("atlas-pack-tests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(
@@ -350,7 +431,7 @@ final class OfflineAtlasTests: XCTestCase {
             try? FileManager.default.removeItem(at: directory)
         }
         let destination = directory.appendingPathComponent("nms-reference.sqlite")
-        try FileManager.default.copyItem(at: previewURL(), to: destination)
+        try FileManager.default.copyItem(at: fixtureURL(), to: destination)
         return destination
     }
 
@@ -358,7 +439,7 @@ final class OfflineAtlasTests: XCTestCase {
         after sql: String,
         containing expectedMessage: String
     ) throws {
-        let url = try mutablePreviewURL()
+        let url = try mutableFixtureURL()
         try execute(sql, at: url)
         let store = try SQLiteNMSStore(fileURL: url)
         XCTAssertThrowsError(try store.manifest()) { error in
@@ -537,13 +618,13 @@ final class PackLifecycleTests: XCTestCase {
         in workspace: URL,
         variant: Int
     ) throws -> PackCandidate {
-        let bundles = [Bundle.main, Bundle(for: Self.self)]
-        let sourceSQLite = try XCTUnwrap(bundles.lazy.compactMap {
-            $0.url(forResource: "nms-reference", withExtension: "sqlite")
-        }.first)
-        let sourceSidecar = try XCTUnwrap(bundles.lazy.compactMap {
-            $0.url(forResource: "pack-manifest", withExtension: "json")
-        }.first)
+        let fixtureBundle = Bundle(for: Self.self)
+        let sourceSQLite = try XCTUnwrap(
+            fixtureBundle.url(forResource: "nms-reference", withExtension: "sqlite")
+        )
+        let sourceSidecar = try XCTUnwrap(
+            fixtureBundle.url(forResource: "pack-manifest", withExtension: "json")
+        )
         let directory = workspace.appendingPathComponent("candidate-\(variant)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let sqliteURL = directory.appendingPathComponent(PackLocator.sqliteName)

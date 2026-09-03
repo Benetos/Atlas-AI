@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the small Debug preview SQLite pack used by the iOS simulator."""
+"""Build the small disposable SQLite fixture used by AtlasTests."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TEST_PATH = ROOT / "tests" / "test_build_nms_sqlite.py"
-OUTPUT_DIR = ROOT / "apps" / "ios" / "Atlas" / "Resources"
+OUTPUT_DIR = ROOT / "apps" / "ios" / "AtlasTests" / "Fixtures"
 SQLITE_OUTPUT = OUTPUT_DIR / "nms-reference.sqlite"
 SIDECAR_OUTPUT = OUTPUT_DIR / "pack-manifest.json"
 

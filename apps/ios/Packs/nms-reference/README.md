@@ -49,21 +49,25 @@ Upload `build/nms-reference.aar` to App Store Connect as an Apple-hosted pack.
 The app reads it through `AssetPackManager` using asset pack ID
 `nms-reference`.
 
-## Debug preview
+## Debug and test data
 
-Debug builds load a small preview snapshot from the app bundle so the simulator
-does not need App Store hosting. Regenerate both the SQLite file and its preview
-sidecar with:
+Debug builds embed the complete generated production snapshot so simulator,
+search, category, tool, and Ask Atlas testing exercise the same catalog users
+will receive. Prepare it with:
 
 ```bash
-python3 scripts/make_preview_pack.py
+./scripts/prepare_ios_debug_pack.sh
 ```
 
-That command writes `nms-reference.sqlite` and `pack-manifest.json` beside one
-another in `apps/ios/Atlas/Resources`. The sidecar is marked
-`"pack_role": "preview"`; it must never pass the production packaging gate.
-To exercise the complete dataset locally, use generated production outputs
-without committing them or changing the preview role.
+The ignored `build/nms-sqlite` pair is referenced directly by the Atlas Debug
+target and keeps `"pack_role": "production"`. The build fails when it is
+missing rather than falling back to a catalog too small to reveal data or
+search defects.
+
+`python3 scripts/make_preview_pack.py` separately regenerates the three-row
+fixture under `apps/ios/AtlasTests/Fixtures`. That fixture is bundled only with
+the test target and is reserved for focused tests that mutate or corrupt a
+throwaway database.
 
 The SQLite file, sidecar, and `.aar` are generated outputs. Do not vendor the
 full production snapshot in Git.

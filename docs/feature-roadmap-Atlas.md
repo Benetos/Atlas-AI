@@ -18,24 +18,30 @@ The active dataset contains 2,597 canonical entities, 2,181 recipes, 4,003
 ordered ingredient relationships, and 4,752 feature records. The repository
 also preserves 88,009 lossless source records outside the client pack.
 
-The app is now a truthfully buildable internal alpha: Debug produces an
-executable with its preview database, while Release excludes that fixture and
-embeds a real Apple-hosted Background Assets downloader extension. The full
-pinned production import is validated and packageable as an asset archive.
+The app is now a truthfully buildable internal alpha: a prepared Debug checkout
+embeds the complete generated production database, while Release excludes the
+bundled pair and embeds a real Apple-hosted Background Assets downloader
+extension. The tiny disposable database is isolated to mutation/corruption
+tests. The full pinned production import is validated and packageable as an asset archive.
 Runtime code downloads both database and sidecar, copies them out of Apple's
 process-scoped location, verifies them, atomically activates an immutable
 release, and recovers one prior verified release if the active copy is corrupt.
 The advertised offline questions now pass through a typed
 query planner instead of sending whole conversational sentences to strict FTS.
 Library search includes items, recipes, and feature records, browse results are
-paginated, and feature cards open a compatibility detail screen.
+paginated across all 18 item, recipe, and compatibility categories, and feature
+cards open a compatibility detail screen. Normal Debug builds and hosted
+integration tests use the full generated production snapshot; the three-row
+preview is isolated to mutation and corruption tests.
 
 It is not release-ready. Apple-hosted upload, signing/app-group registration,
 and a first-install/upgrade/rollback rehearsal on physical signed devices still
 need App Store Connect. Pack bytes are not yet reproducible or cryptographically
 bound to a resolved Git tree and transformer identity. The on-device
-system-model call is single-turn, non-streaming, and not yet behind an
-injectable provider boundary; live results lack card-level provenance; hosted
+system-model narration is single-turn, non-streaming, and not yet behind an
+injectable provider boundary, although it is optional and bounded by an
+eight-second fallback to the deterministic SQLite answer; live results lack
+card-level provenance; hosted
 CI and release automation are incomplete; and public distribution is blocked
 by an unresolved rights/publication decision.
 
@@ -189,7 +195,8 @@ offline data without manual file copying.
 Current state: Implemented in the repository: full-pack packaging, native
 ExtensionKit target, managed download/progress, copied staging, sidecar and
 SQLite validation, immutable releases, atomic active/previous state, automatic
-rollback, Debug-only preview, and corruption tests. Remaining work is the
+rollback, a full production-role Debug snapshot, a test-only disposable
+preview, and corruption tests. Remaining work is the
 signed App Store Connect upload and physical-device lifecycle rehearsal.
 Effort: S–M, primarily distribution validation.
 
@@ -198,11 +205,11 @@ Effort: S–M, primarily distribution validation.
 **Complete on-device database and tool parity**
 Why users expect it: Offline claims are only true if every supported answer and
 screen has its complete production data and query capability on the device.
-Current state: All five registered model tools are SQLite-only and pass direct
-fixture tests; remote fallback is explicit-only. The production archive is
-validated against the pinned 2,597-entity count profile and can be installed by
-the managed runtime. Full recipe/content/provenance model tools and a
-production-pack database-tool parity test remain incomplete.
+Current state: All five registered model tools are SQLite-only and have direct
+full-production-pack integration coverage; remote fallback is explicit-only.
+The production archive is validated against the pinned 2,597-entity count
+profile and can be installed by the managed runtime. Typed specialist APIs and
+physical-device Foundation Models evaluation remain incomplete.
 Effort: M.
 
 ---
@@ -210,9 +217,10 @@ Effort: M.
 **Automated iOS and pipeline quality gates**
 Why users expect it: A reference answer is only useful if app builds, pack
 integrity, migrations, and core questions cannot silently regress.
-Current state: Twenty Python tests, 21 iOS tests, a production archive validator,
-and Debug/Release app-bundle verification exist locally. Hosted CI, database
-integration tests, and a complete UI smoke suite are missing.
+Current state: Thirty-three Python tests, 30 iOS tests, a production archive
+validator, full-pack database integration coverage, and Debug/Release
+app-bundle verification exist locally. Hosted CI and a complete physical-device
+UI/Foundation Models smoke suite are missing.
 Effort: M.
 
 ---
@@ -354,7 +362,7 @@ Effort: L, primarily data/product QA rather than UI plumbing.
 
 - Added the missing Xcode Sources and Resources phases and excluded the source
   Info.plist from resource copying. A real build now contains an executable,
-  preview SQLite database, and privacy manifest.
+  full generated SQLite database, and privacy manifest.
 - Fixed source-level SQLite store failures that had been hidden by the empty
   target.
 - Added `AtlasQueryPlan`, with typed local/live/web source intent,
@@ -371,10 +379,11 @@ Effort: L, primarily data/product QA rather than UI plumbing.
 - Added missing-pack retry, typed first-use web consent, bookmark deletion, and
   recent-history clearing.
 - Corrected the Background Assets platform manifest and packaging command, and
-  added a verifier that rejects an app bundle without its executable, preview
-  pack, privacy manifest, exact live-data URL, or a healthy SQLite database.
+  added a verifier that rejects an app bundle without its executable, complete
+  pinned Debug pack, privacy manifest, exact live-data URL, or a healthy SQLite database.
 - Added a hosted iOS unit-test target covering five query-planning contracts,
-  preview-pack search, and three complete offline Atlas responses.
+  full-pack search/category integration, and complete offline Atlas responses;
+  the small fixture remains available only for destructive database tests.
 - Corrected Xcode URL escaping so the bundled Supabase endpoint is a valid
   `https://` URL rather than the truncated value `https:`.
 - Made SQLite pack publication staged and rollback-safe on handled failures,
@@ -383,6 +392,8 @@ Effort: L, primarily data/product QA rather than UI plumbing.
 - Centralized the model-callable database surface in a fixed local registry,
   made Live Atlas require explicit source intent, removed automatic web lookup
   on local misses, and made local database errors fail closed.
+- Bounded Apple Foundation Models narration at eight seconds and retained the
+  verified SQLite answer whenever generation is unavailable, fails, or stalls.
 - Added an embedded Apple-hosted Background Assets downloader extension and
   process-correct `AssetPackManager` acquisition for the SQLite plus sidecar.
 - Added app-owned staging, SHA-256/size/schema/provenance/count/quick/FK/FTS
@@ -391,20 +402,18 @@ Effort: L, primarily data/product QA rather than UI plumbing.
 - Added a pinned production pack command that validates all 2,597 entities,
   79,731 preferred localizations, 2,181 recipes, 4,003 ingredients, and 4,752
   content records before creating the Apple asset archive.
-- Made the preview and its `preview` sidecar Debug-only; Release bundle
-  verification fails if either preview file is present or the downloader
-  extension is absent.
+- Made the full generated production pair a Debug build prerequisite and moved
+  the preview pair into test-only resources; Release bundle verification fails
+  if either database file is present or the downloader extension is absent.
 
 ## Quick Wins (< 1 Week Each)
 
 - Add a source badge to every result card: Packed, Live Atlas, or Community.
-- Replace raw count JSON on Info with readable counts and pack generation date.
+- Add the pack generation date beside the readable counts on Info.
 - Add clear search filters for entity type, recipe kind, category, and rarity.
 - Add a help/feedback sheet that exports app build, pack release, and failed
   query without exporting private user text by default.
 - Add VoiceOver labels to placeholder icons and card provenance.
-- Add full-pack capability parity checks: every advertised entity, recipe,
-  content, localization, and provenance path must resolve from SQLite alone.
 - Add a network-deny test that directly invokes every registered database tool
   and observes zero requests.
 - Move preview fixture construction out of the Python test module and validate
@@ -489,10 +498,11 @@ Status: **Implemented in this build-out.**
 
 Acceptance criteria:
 
-- Clean Xcode build produces an executable Atlas app.
-- Preview SQLite/sidecar and privacy manifest are present in Debug only.
-- Release excludes both preview files and embeds the downloader extension.
-- SQLite `quick_check` passes on the bundled preview.
+- `prepare_ios_debug_pack.sh` plus a clean Xcode build produces an executable
+  Atlas app backed by the complete pinned database.
+- Full production SQLite/sidecar and the privacy manifest are present in Debug.
+- Release excludes both bundled database files and embeds the downloader extension.
+- SQLite quick/FK/FTS checks and exact production counts pass for Debug.
 - Current Background Assets tooling accepts the pack manifest.
 - Python pipeline tests pass.
 
@@ -510,10 +520,10 @@ Acceptance criteria:
   the first page.
 - Errors are visible rather than converted silently to empty results.
 - Entity -> recipe -> ingredient and feature-card -> feature-detail navigation
-  work from the preview and production packs.
+  work against the full production pack.
 - The model tool registry contains only the documented local tools and can be
   constructed from `SQLiteNMSStore` without settings or network dependencies.
-- Every registered tool succeeds against the fixture with networking denied.
+- Every registered tool succeeds against the full production pack with networking denied.
 - Ordinary prompts, local misses, and local database errors create zero remote
   requests even when optional network settings have previously been enabled.
 
@@ -622,7 +632,7 @@ Required decisions:
 | Atlas answers | Advertised prompts, no-model fallback, evidence completeness, cancellation, web conflict policy |
 | On-device model | Explicit system-model selection, all availability reasons, locale preflight, guardrail/context errors, evidence-ID validation, OS-model prompt regressions, airplane-mode physical-device run |
 | UI | Navigation, saved persistence, empty/error/loading states, Dynamic Type, VoiceOver, iPad, airplane mode |
-| Release | App executable/resources, no secrets, no preview pack or cloud-model entitlement in production, asset archive, rollback rehearsal |
+| Release | App executable/resources, no secrets, no bundled pack or cloud-model entitlement in production, asset archive, rollback rehearsal |
 
 Provisional internal-beta budgets:
 

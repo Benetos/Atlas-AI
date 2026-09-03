@@ -7,6 +7,7 @@ struct AtlasView: View {
     @State private var busy = false
     @State private var confirmWeb = false
     @State private var pendingWebPrompt: String?
+    @State private var narrationTask: Task<Void, Never>?
 
     private let chips = [
         "How do I cook food?",
@@ -27,6 +28,16 @@ struct AtlasView: View {
                             ForEach(messages) { message in
                                 messageBlock(message)
                                     .id(message.id)
+                            }
+                            if busy {
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                    Text("Building a grounded answer…")
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .accessibilityElement(children: .combine)
                             }
                         }
                         .padding()
@@ -65,6 +76,9 @@ struct AtlasView: View {
                 Button("Cancel", role: .cancel) {
                     pendingWebPrompt = nil
                 }
+            }
+            .onDisappear {
+                cancelNarration()
             }
         }
     }
@@ -179,15 +193,44 @@ struct AtlasView: View {
         if plan.requestsWeb && !model.settings.webSearchEnabled {
             model.settings.webSearchEnabled = true
         }
+        cancelNarration()
         draft = ""
         messages.append(AtlasMessage(role: .user, text: prompt))
         busy = true
         defer { busy = false }
         let controller = AtlasSessionController(store: store, settings: model.settings)
-        let reply = await controller.reply(to: prompt)
-        messages.append(
-            AtlasMessage(role: .assistant, text: reply.text, cards: reply.cards, note: reply.note)
+        var reply = await controller.reply(to: prompt)
+        if FoundationModelAvailability.current == .available,
+           reply.cards.contains(where: { card in
+               if case .web = card { return false }
+               return true
+           }) {
+            switch await boundedNarration(
+                controller: controller,
+                prompt: prompt,
+                grounded: reply
+            ) {
+            case .completed(let text):
+                reply.text = text
+            case .timedOut:
+                reply.note = addingNote(
+                    "On-device narration exceeded eight seconds. Showing the verified database answer.",
+                    to: reply.note
+                )
+            case .failed:
+                reply.note = addingNote(
+                    "On-device narration was unavailable. Showing the verified database answer.",
+                    to: reply.note
+                )
+            }
+        }
+        let assistant = AtlasMessage(
+            role: .assistant,
+            text: reply.text,
+            cards: reply.cards,
+            note: reply.note
         )
+        messages.append(assistant)
         if case .entity(let entity) = reply.cards.first {
             model.saved.remember(
                 SavedItem(
@@ -200,6 +243,72 @@ struct AtlasView: View {
                 )
             )
         }
+    }
+
+    @MainActor
+    private func boundedNarration(
+        controller: AtlasSessionController,
+        prompt: String,
+        grounded: AtlasReply
+    ) async -> NarrationResult {
+        let resultBox = NarrationResultBox()
+        narrationTask = Task { @MainActor in
+            let value = await controller.narration(to: prompt, grounded: grounded)
+            await resultBox.finish(value)
+        }
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(8))
+        while clock.now < deadline {
+            switch await resultBox.poll() {
+            case .pending:
+                try? await Task.sleep(for: .milliseconds(50))
+            case .finished(let value):
+                narrationTask = nil
+                guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !value.isEmpty
+                else { return .failed }
+                return .completed(value)
+            }
+        }
+
+        narrationTask?.cancel()
+        narrationTask = nil
+        return .timedOut
+    }
+
+    @MainActor
+    private func cancelNarration() {
+        narrationTask?.cancel()
+        narrationTask = nil
+    }
+
+    private func addingNote(_ newNote: String, to existing: String?) -> String {
+        [existing, newNote].compactMap { $0 }.joined(separator: " ")
+    }
+}
+
+private enum NarrationResult {
+    case completed(String)
+    case failed
+    case timedOut
+}
+
+private enum NarrationPollResult: Sendable {
+    case pending
+    case finished(String?)
+}
+
+private actor NarrationResultBox {
+    private var result: NarrationPollResult = .pending
+
+    func finish(_ value: String?) {
+        guard case .pending = result else { return }
+        result = .finished(value)
+    }
+
+    func poll() -> NarrationPollResult {
+        result
     }
 }
 
