@@ -5,21 +5,31 @@ conversational Atlas, not a search bar. Canonical facts come from a pinned
 local SQLite snapshot. Apple’s on-device `SystemLanguageModel.default` may
 interpret and narrate answers grounded in that snapshot. All language-model
 inference stays on the device: Atlas never sends prompts, evidence, or model
-output to a cloud model. The app remains useful without the model, and the
-internet is optional. Every database capability used to answer, search, browse,
-or navigate executes against the installed on-device SQLite pack.
+output to a cloud model. The app remains useful without the model. The
+internet is optional and is not used for the handbook. Every database
+capability used to answer, search, browse, or navigate executes against the
+installed on-device SQLite pack.
 
-This document is the product contract for the first app screens. It does not
-add typed fish, expedition, or ship-part tables. `nms_content_records` remains
-the feature fallback for this first surface. The screen, tool, projection, and
-delivery contracts for promoting those families are defined in
+This document is the product contract. Work is sliced in
+[WORK_SLICES.md](WORK_SLICES.md). Typed fish, expedition, and ship-part
+screens are later slices. `nms_content_records` remains the compatibility
+fallback until those families are promoted. Screen and source-data rules for
+those slices are in
 [SPECIALIZED_EXPERIENCES_PLAN.md](SPECIALIZED_EXPERIENCES_PLAN.md).
 
-Licensing posture is **internal until Phase 0 is written**. Do not ship
-extracted images. Do not describe the app as a public or commercial release
-until source code, structured game data, localization text, and images each
-have an explicit publication decision. See [ROADMAP.md](ROADMAP.md) Phase 0
-and the README source boundary.
+A live internet copy of the handbook is **parked**. It was an early idea and
+is not part of the current product. If it returns, it would be a free
+Supabase snapshot, not the thing the app queries for answers.
+
+User-saved data is **local**. Bookmarks and recents already live on the
+device. Lists, plans, notes, and progress should too. If custom user data
+later needs an account or another device, the backend can be Supabase,
+Firebase, or similar. That slice syncs player artifacts only.
+
+Atlas transforms NMS-Handbook JSON at a pinned commit. It does not reuse
+that project’s Python or website, and it does not claim to own Hello Games
+material. Attribution stays on the Info tab. Extracted images are not
+bundled.
 
 ## Outcome
 
@@ -30,12 +40,15 @@ A player can, with the network off and the asset pack on disk:
 - Browse products, substances, technology, crafting, refining, and cooking.
 - Bookmark items locally.
 
-With the network on and the matching setting enabled, they can also:
+With the network on and internet search enabled, they can also:
 
-- Request a live Atlas comparison with explicit source language such as
-  “Search live Atlas for Ferrite Dust.”
-- Search the web for patch notes, current expeditions, and wiki writeups.
-  Web results are labeled community/web and never become an Atlas recipe.
+- Ask Atlas about things the pack cannot own: a new expansion, patch notes,
+  the current expedition, community writeups, or good videos.
+- Get **Web cards** (host, title, snippet, open in Safari). Those results
+  are labeled community/web and never become an Atlas recipe or item stat.
+
+A hosted handbook comparison (“live Atlas”) is leftover code, not a current
+player feature. Web search is the only intended network augment.
 
 ## Tabs
 
@@ -43,8 +56,8 @@ With the network on and the matching setting enabled, they can also:
    tappable cards.
 2. **Library** — browse and keyword search over the local snapshot.
 3. **Saved** — local bookmarks and recents. No user accounts in v1.
-4. **Info** — local pack SHA, live SHA if reachable, on-device model
-   availability, attribution, licensing notice, and network toggles.
+4. **Info** — local pack SHA, on-device model availability, attribution,
+   and optional internet-search toggle.
 
 ## Screens
 
@@ -53,8 +66,7 @@ With the network on and the matching setting enabled, they can also:
 Display `display_name`, then `name`, then `game_id`
 ([DATA_CONTRACT.md](DATA_CONTRACT.md)). Show type, category, subcategory,
 rarity, legality, base value, subtitle, and description. Icons are type-colored
-placeholders until the asset publication gate passes. Ignore
-`icon_storage_path`.
+placeholders. Ignore `icon_storage_path`.
 
 Lists:
 
@@ -135,8 +147,8 @@ Delivery:
 Dataset updates ship as a new asset pack, not as a full Data API download on
 launch.
 
-Live revision, when the user opts into live Atlas, is read from public row
-provenance (`nms_entities.source_commit_sha`), not from `nms_private`.
+There is no runtime live-revision check in the current product. Pack
+identity is the local manifest.
 
 ## Atlas AI contract
 
@@ -193,8 +205,8 @@ cards remain the authoritative deterministic path and supply source-policy
 signals until those checks move into a dedicated envelope.
 
 Never present a web snippet as an Atlas recipe. If a web result disagrees with
-local or live Atlas on items, recipes, or ingredients, Atlas states the packed
-or live fact and marks the web result as community/web.
+the packed handbook on items, recipes, or ingredients, Atlas states the packed
+fact and marks the web result as community/web.
 
 Instructions (session):
 
@@ -203,8 +215,8 @@ Instructions (session):
 > or item stats. Never merge a web snippet into an Atlas recipe.
 
 Guided intent kinds: lookup item, how to craft/refine/cook, what uses this,
-browse category, explicitly compare live Atlas, explicitly ask the web,
-unknown.
+browse category, explicitly ask the web, unknown. Live-handbook intent is
+parked and must not leave the device.
 
 ### Model-callable database tools — all on-device
 
@@ -223,18 +235,21 @@ constructed only from `SQLiteNMSStore`.
 
 | Operation | Network source | Gate |
 |---|---|---|
-| Live Atlas comparison | Supabase anon `SELECT` | setting on **and** prompt explicitly says “live Atlas” |
 | Web lookup | public web fetch | per-source intent and consent |
+| Live handbook comparison | parked | do not use |
 
-These operations remain outside the model and database-tool dependency
-graph. Their results are provenance-tagged supplemental cards, are never
-silently folded into canonical recipes, and never substitute for a local miss
-or failure. The UI waits up to eight seconds for a concise on-device narration
-grounded in the SQLite result, then returns one answer with the authoritative
-cards. If the model fails or reaches that bound, Atlas returns the verified
+Web lookup remains outside the model and database-tool dependency graph.
+Results are provenance-tagged supplemental cards, are never silently folded
+into canonical recipes, and never substitute for a local miss or failure.
+The leftover live-Atlas client is not a player feature.
+
+The UI waits up to eight seconds for a concise on-device narration grounded
+in the SQLite result, then returns one answer with the authoritative cards.
+If the model fails or reaches that bound, Atlas returns the verified
 deterministic database answer instead of hanging. Persistent model sessions,
-streaming, an injectable model-planning boundary, and evidence-linked generated
-output are beta milestones.
+streaming, and evidence-linked generated output are later conversation work,
+not a prerequisite for the planner.
+
 Durable UI is cards. Tapping a card opens the native entity, recipe, feature
 record, or Safari view.
 
@@ -263,23 +278,30 @@ device-coverage, model-license, and update-policy budgets before adoption.
 ## Optional internet
 
 Off by default. Model inference and database tools always stay on-device. Only
-an enabled request with explicit live/web source intent sends a search query
-over the network; no prompt, local evidence bundle, or model output is sent to
-a remote model service. A local miss does not count as source intent.
+an enabled request with explicit web source intent sends a search query over
+the network; no prompt, local evidence bundle, or model output is sent to a
+remote model service. A local miss does not count as source intent.
 
-**Live Atlas.** Same canonical tables as the pack, possibly a newer import.
-Publishable key only. Example: “Search live Atlas for Ferrite Dust.” This is a
-supplemental comparison, not a database-tool or pack fallback.
+**Live handbook.** Parked. Do not query Supabase for answers. Leftover
+`LiveAtlasClient` code is not product.
 
-**General web search.** For questions the snapshot is not supposed to answer
-(current expedition, patch notes, wiki lore). First use confirms that the
-query leaves the device. Chip: “Search the web.” Results are Web cards
-(host, title, snippet, open in Safari). v1 fetches the NMS Fandom search API
-and DuckDuckGo HTML as open-web fallback. No search-provider secret in the
-IPA.
+**General web search.** An optional augment, not a second handbook. Use it
+when the player is outside the pack or needs current community information:
+a new expansion, patch notes, the live expedition, wiki lore, or videos.
+First use confirms that the query leaves the device. Chip: “Search the web.”
+Results are Web cards (host, title, snippet, open in Safari). v1 fetches the
+NMS Fandom search API and DuckDuckGo HTML as open-web fallback. No
+search-provider secret in the IPA. A local miss is not consent to go online.
 
 If an explicitly requested network operation fails, Atlas keeps using the pack.
-Quiet notes only: “live Atlas unavailable” or “web search unavailable.”
+Quiet note only: “web search unavailable.”
+
+## User-saved data
+
+v1 saves entity and recipe bookmarks plus recents on the device. The next
+saved-data slice adds versioned local artifacts (lists, notes, recipe plans,
+guide progress) so a later optional sync backend can upload the same JSON.
+See [WORK_SLICES.md](WORK_SLICES.md) Slices 2 and 8.
 
 ## Attribution
 
@@ -287,12 +309,11 @@ Show on the Info tab and keep in the repository README:
 
 - Structured data is transformed from
   [ApexFatality93/NMS-Handbook](https://github.com/ApexFatality93/NMS-Handbook)
-  (GPL-3.0) at a pinned commit.
-- Much of that text and imagery is extracted from No Man’s Sky and may contain
-  rights owned by Hello Games or its licensors.
-- Atlas-AI source code in this repository is separate from upstream generator
-  code. Do not copy NMS-Handbook Python or website files into the app.
-- Extracted images are not bundled. Placeholders stand in until Phase 0.
+  JSON at a pinned commit. Atlas does not reuse that project’s Python or
+  website.
+- Atlas does not claim to own Hello Games material. Placeholders stand in
+  for extracted images.
+- Attribution stays on the Info tab.
 
 ## Non-goals for v1
 
@@ -303,7 +324,9 @@ Show on the Info tab and keep in the repository README:
   used by Atlas, Library, Saved, or detail screens.
 - Shipping a second bundled model before beta device-coverage evidence shows
   that the deterministic fallback is insufficient.
-- User accounts, write APIs, or mutating game data.
-- Image upload to Supabase Storage.
-- Typed projections for fish, expeditions, ship parts, or building catalogs.
+- User accounts or a hosted user-data API until Slice 8 is explicitly started.
+- A live internet handbook or any automatic network fallback for answers.
+- Image upload to object storage.
+- Typed projections for fish, expeditions, ship parts, or building catalogs
+  before their slices.
 - Auto-updating the SQLite pack from `main` without a pinned commit.

@@ -44,25 +44,6 @@ struct InfoView: View {
                     .disabled(model.isPackUpdateRunning)
                 }
 
-                Section("Live Atlas") {
-                    Toggle("Allow explicit live comparison", isOn: liveAtlasBinding)
-                    Text("Atlas database tools always use the installed SQLite pack. Live Atlas is contacted only when you explicitly ask for it, and never replaces a local error or missing result.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    if model.settings.liveAtlasEnabled {
-                        if let live = model.liveRevision {
-                            LabeledContent("Live commit", value: shortSHA(live))
-                            if let local = model.pack?.sourceCommitSHA, live != local {
-                                Text("The live and packed revisions differ. Recipe facts still prefer the local snapshot unless you ask to search live Atlas.")
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                            }
-                        } else if let error = model.liveRevisionError {
-                            Text(error).font(.footnote).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
                 Section("Internet search") {
                     Toggle("Allow internet search", isOn: webSearchBinding)
                         .onChange(of: model.settings.webSearchEnabled) { _, enabled in
@@ -86,27 +67,12 @@ struct InfoView: View {
                 }
 
                 Section("Attribution") {
-                    Text("Structured data is transformed from ApexFatality93/NMS-Handbook (GPL-3.0) at a pinned commit. Much of that text and imagery is extracted from No Man’s Sky and may contain rights owned by Hello Games or its licensors.")
-                    Text("Extracted images are not bundled. Placeholders stand in until the Phase 0 publication gate.")
-                    Text("Licensing posture: internal until Phase 0 is written.")
-                        .foregroundStyle(.secondary)
+                    Text("Structured data is transformed from ApexFatality93/NMS-Handbook JSON at a pinned commit. Atlas does not reuse that project’s Python or website, and does not claim to own Hello Games material.")
+                    Text("Extracted images are not bundled. Placeholders stand in for icons.")
                 }
             }
             .navigationTitle("Info")
-            .task {
-                await model.refreshLiveRevision()
-            }
-            .onChange(of: model.settings.liveAtlasEnabled) {
-                Task { await model.refreshLiveRevision() }
-            }
         }
-    }
-
-    private var liveAtlasBinding: Binding<Bool> {
-        Binding(
-            get: { model.settings.liveAtlasEnabled },
-            set: { model.settings.liveAtlasEnabled = $0 }
-        )
     }
 
     private var webSearchBinding: Binding<Bool> {

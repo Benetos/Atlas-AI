@@ -1,5 +1,10 @@
 # Supabase architecture and ingestion runbook
 
+**Status: parked.** Keep this runbook in case a hosted snapshot is wanted
+later. The phone app does not use it. The active product pipeline is
+transform → SQLite pack → device. See [ROADMAP.md](ROADMAP.md) and
+[WORK_SLICES.md](WORK_SLICES.md).
+
 ## Architecture
 
 Use three boundaries:
