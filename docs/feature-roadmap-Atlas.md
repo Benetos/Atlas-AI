@@ -20,10 +20,13 @@ and bookmark items locally. Deterministic retrieval is authoritative. Apple’s
 on-device system model may narrate those results; it is not a data source.
 There is no cloud model.
 
-A live internet handbook was an early idea. It is parked. Supabase is not
-required to run the app. If a hosted snapshot is ever wanted, free Supabase
-is enough. If custom user data later needs an account or another device, that
-is a separate user-data backend (Supabase, Firebase, or similar).
+A live internet handbook was an early idea. It is parked. Optional **web
+search** is not that path: it augments questions the pack cannot answer or
+that need current community information (expansions, patch notes, videos).
+Supabase is not required to run the app. If a hosted snapshot is ever
+wanted, free Supabase is enough. If custom user data later needs an account
+or another device, that is a separate user-data backend (Supabase, Firebase,
+or similar).
 
 One developer owns the repo. Local tests, local checkouts, and device runs
 are the quality gate. Hosted CI is not a work item.

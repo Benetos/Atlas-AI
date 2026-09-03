@@ -11,6 +11,7 @@ vets local checkouts before anything reaches GitHub.
 
 ```text
 now:     phone pack -> ask / browse / bookmark
+         optional web search for current / community questions
 next:    recipe plans and richer local saved data
 then:    typed guides from data already in the pack
 later:   optional user-data sync (Supabase or Firebase)
@@ -28,13 +29,15 @@ Already true:
 - Optional on-device narration with an eight-second fallback to the SQLite
   answer.
 - Local bookmarks and recents in `UserDefaults`.
+- Optional internet search for questions the pack cannot answer or that need
+  current community information. Results are labeled community/web.
 - Release pack download, verify, activate, and rollback code. Debug embeds
   the full pack.
 
 Not current product:
 
-- A live internet copy of the handbook. `LiveAtlasClient` and the Info-tab
-  live-revision UI are leftover from that idea.
+- A live internet copy of the handbook. `LiveAtlasClient` is leftover from
+  that idea. Web search is not that path.
 - Accounts, cloud save, or a second backend.
 - Typed fish, expedition, building, or ship workspaces. Those families open
   as generic content records today.
@@ -59,6 +62,37 @@ Not current product:
 runs on the phone.
 
 **Status:** This documentation pass.
+
+## Kept — optional web augment
+
+**Job:** Help when the player is outside the pack or needs current
+community information.
+
+This is not a second database. The pack still answers items, recipes, and
+packed history. Web search is for the rest: a new expansion, patch notes,
+what expedition is active, good YouTube videos, wiki lore the snapshot was
+never meant to own.
+
+**Already in the app**
+
+- Off by default. First use asks before a query leaves the device.
+- Explicit “search the web” intent, or time-sensitive words plus expedition /
+  patch / update language.
+- Fandom search plus DuckDuckGo HTML. Web cards open in Safari.
+- A local miss does not automatically go online.
+
+**Later polish, not a prerequisite for the planner**
+
+- Clearer “this is not in the pack — search the web?” when the question is
+  current news, video, or community opinion.
+- Keep the packed answer on screen when both exist.
+- Prefer video hosts when the player asks for videos.
+
+**Out**
+
+- Downloading handbook tables from the internet.
+- Merging a web snippet into a recipe or item stat.
+- Requiring the network for Atlas, Library, or Saved.
 
 ## Slice 1 — Recipe planner
 
@@ -191,6 +225,8 @@ cannot be mistaken for a live season.
 - Follow-up turns against the last local result (“scale that to 12”).
 - Action cards: open planner, open fish filter, save to a list.
 - Packed vs community/web badges. No live-handbook badge.
+- Offer web search when the question is current news, video, or otherwise
+  outside the pack — still labeled community/web.
 
 **Out**
 

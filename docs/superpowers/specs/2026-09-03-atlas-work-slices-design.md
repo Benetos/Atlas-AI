@@ -23,17 +23,23 @@ and no live internet handbook in the current product.
 2. **Live Atlas is parked.** A hosted copy of the handbook was an early idea.
    It is not worth running now. If it comes back, free Supabase is enough,
    because it would only be a published snapshot.
-3. **User data stays local until sync is a real need.** Bookmarks and recents
+3. **Optional web search is an augment, not a database.** It is for questions
+   the pack cannot answer or that need current community information: a new
+   expansion, patch notes, the live expedition, good YouTube videos, wiki
+   writeups. Results are labeled community/web. They never become recipes or
+   replace a local miss automatically. A local miss is not by itself consent
+   to leave the device.
+4. **User data stays local until sync is a real need.** Bookmarks and recents
    already live on the device. Lists, plans, notes, and progress should too.
    If custom user data later needs an account or another device, the backend
    can be Supabase, Firebase, or similar. That is a new product, not a second
    handbook.
-4. **Attribution, not ownership.** Structured data is transformed from
+5. **Attribution, not ownership.** Structured data is transformed from
    NMS-Handbook JSON at a pinned commit. Atlas does not reuse that project's
    Python or website. The app attributes the source and does not claim to own
    Hello Games material. Other community references already exist. Licensing
    theater is not a work item.
-5. **No hosted CI obligation.** Nothing reaches GitHub without a local test
+6. **No hosted CI obligation.** Nothing reaches GitHub without a local test
    and a vetted checkout.
 
 ## What "a slice" means

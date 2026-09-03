@@ -21,8 +21,10 @@ and Slice 2 (local artifacts) first.
 6. **Capabilities must match the data.** Do not claim current expeditions,
    species-specific bait, or ship-part compatibility the pack does not have.
 
-Live handbook HTTP is parked. Optional web search stays a labeled community
-source. Optional user-data sync is Slice 8 and does not host the handbook.
+Live handbook HTTP is parked. Optional web search is a kept augment for
+current or community questions (expansions, patch notes, videos). Results
+stay labeled community/web. Optional user-data sync is Slice 8 and does not
+host the handbook.
 
 ## Shared pattern
 

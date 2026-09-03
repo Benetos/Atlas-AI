@@ -42,11 +42,13 @@ A player can, with the network off and the asset pack on disk:
 
 With the network on and internet search enabled, they can also:
 
-- Search the web for patch notes, current expeditions, and wiki writeups.
-  Web results are labeled community/web and never become an Atlas recipe.
+- Ask Atlas about things the pack cannot own: a new expansion, patch notes,
+  the current expedition, community writeups, or good videos.
+- Get **Web cards** (host, title, snippet, open in Safari). Those results
+  are labeled community/web and never become an Atlas recipe or item stat.
 
 A hosted handbook comparison (“live Atlas”) is leftover code, not a current
-player feature.
+player feature. Web search is the only intended network augment.
 
 ## Tabs
 
@@ -283,12 +285,13 @@ remote model service. A local miss does not count as source intent.
 **Live handbook.** Parked. Do not query Supabase for answers. Leftover
 `LiveAtlasClient` code is not product.
 
-**General web search.** For questions the snapshot is not supposed to answer
-(current expedition, patch notes, wiki lore). First use confirms that the
-query leaves the device. Chip: “Search the web.” Results are Web cards
-(host, title, snippet, open in Safari). v1 fetches the NMS Fandom search API
-and DuckDuckGo HTML as open-web fallback. No search-provider secret in the
-IPA.
+**General web search.** An optional augment, not a second handbook. Use it
+when the player is outside the pack or needs current community information:
+a new expansion, patch notes, the live expedition, wiki lore, or videos.
+First use confirms that the query leaves the device. Chip: “Search the web.”
+Results are Web cards (host, title, snippet, open in Safari). v1 fetches the
+NMS Fandom search API and DuckDuckGo HTML as open-web fallback. No
+search-provider secret in the IPA. A local miss is not consent to go online.
 
 If an explicitly requested network operation fails, Atlas keeps using the pack.
 Quiet note only: “web search unavailable.”
