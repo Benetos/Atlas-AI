@@ -2,32 +2,35 @@
 
 Atlas-AI is the home for the No Man's Sky reference-data ingestion project and
 the Apple companion app that reads it. The initial source is
-[`ApexFatality93/NMS-Handbook`](https://github.com/ApexFatality93/NMS-Handbook),
-but the Atlas data model is deliberately source-independent so additional
-sources can be assimilated later.
+[`ApexFatality93/NMS-Handbook`](https://github.com/ApexFatality93/NMS-Handbook)
+JSON at a pinned commit. Atlas transforms that data with its own scripts; it
+does not reuse the upstream Python or website.
 
-The companion’s AI contract is fully on-device. Deterministic SQLite results,
-templated summaries, and native cards are currently authoritative. Apple’s
-`SystemLanguageModel.default` may narrate those local results when available,
-but structural claim/evidence validation of generated prose is a beta target;
-generated narration is not itself a canonical data source. There is no
-cloud-model fallback, and narration falls back to the verified SQLite answer
-after eight seconds instead of hanging. Every player-facing database capability
-also runs against the installed SQLite pack; Supabase is not a runtime
-dependency for canonical answers.
+The companion is **phone-local**. Deterministic SQLite results, templated
+summaries, and native cards are authoritative. Apple’s
+`SystemLanguageModel.default` may narrate those local results when available;
+generated narration is not a canonical data source. There is no cloud-model
+fallback, and narration falls back to the verified SQLite answer after eight
+seconds. Every player-facing database capability runs against the installed
+SQLite pack. A live internet handbook is parked. User-saved data stays on
+the device until an optional later sync slice.
+
+What to build next is listed in [docs/WORK_SLICES.md](docs/WORK_SLICES.md).
 
 The upstream repository is large and contains thousands of binary assets.
 Atlas-AI does **not** vendor that repository or its generated data. Instead, it
 uses a shallow partial sparse clone in `.cache/`, transforms the pinned snapshot
-into deterministic import files under `build/`, and then bulk-loads those files
-into Supabase.
+into deterministic import files under `build/`, and builds the on-device
+SQLite pack from those files. A parked Supabase load path still exists if a
+hosted snapshot is wanted later.
 
 ## Project package
 
+- [Work slices](docs/WORK_SLICES.md)
 - [Companion app contract](docs/APP.md)
 - [Companion app feature roadmap](docs/feature-roadmap-Atlas.md)
-- [Specialized experiences implementation plan](docs/SPECIALIZED_EXPERIENCES_PLAN.md)
-- [Roadmap](docs/ROADMAP.md)
+- [Specialized experiences plan](docs/SPECIALIZED_EXPERIENCES_PLAN.md)
+- [Data pipeline roadmap](docs/ROADMAP.md)
 - [Source inventory](docs/SOURCE_INVENTORY.md)
 - [Canonical data contract](docs/DATA_CONTRACT.md)
 - [Supabase architecture and upload runbook](docs/SUPABASE_INGESTION.md)
@@ -44,8 +47,8 @@ Requirements:
 
 - Git 2.25+
 - Python 3.11+
-- `psql` for direct database loading and verification
-- Supabase CLI 2.81.3+ for local development, migrations, and advisors
+- Xcode 26+ to build the companion
+- `psql` and Supabase CLI only if the parked hosted-snapshot path is revived
 
 Fetch only the data and generator directories from the upstream repository:
 
@@ -99,10 +102,12 @@ python3 scripts/build_nms_sqlite.py \
 
 The SQLite file and pack sidecar stay under ignored `build/` paths. The iOS
 Debug target embeds that full generated snapshot directly; a missing snapshot
-fails the build rather than substituting the tiny test fixture. Release obtains
-the same production data from an essential Apple-hosted Background Asset. See
-[docs/APP.md](docs/APP.md). `./scripts/prepare_ios_debug_pack.sh` performs the
-source sync, transform, and pack build in one step for local Xcode work.
+fails the build rather than substituting the tiny test fixture. Release can
+obtain the same production data from an essential Apple-hosted Background
+Asset. See [docs/APP.md](docs/APP.md).
+`./scripts/prepare_ios_debug_pack.sh` performs the source sync, transform,
+and pack build in one step for local Xcode work. The app already runs from
+that local pack on a physical device.
 
 Build the validated Apple-hosted archive (including the SQLite file and
 sidecar) with `./scripts/package_nms_asset_pack.sh`. Release builds embed the
@@ -114,8 +119,6 @@ The initial analyzed source commit is
 `142d9ffd8078944722243398202f22cbef47cd02`. Production imports must record the
 exact resolved commit and must never be described only as "latest."
 
-NMS-Handbook declares GPL-3.0. Much of its text and imagery is extracted from
-No Man's Sky and may contain rights owned by Hello Games or its licensors.
-Atlas-AI keeps source provenance, code licensing, and asset publication as
-explicit gates. Do not publicly distribute extracted text or imagery until the
-project's licensing posture has been reviewed.
+Atlas attributes the NMS-Handbook JSON source and does not claim to own Hello
+Games material. Do not copy NMS-Handbook Python or website files into the
+app. Extracted images are not bundled.

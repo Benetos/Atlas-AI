@@ -1,5 +1,12 @@
 # Supabase deployment record
 
+**Status: parked.** The iOS companion answers from the on-device SQLite pack.
+This project is leftover from an early hosted-handbook idea. Do not treat it
+as a runtime dependency. If a public snapshot is ever wanted, free Supabase
+is enough. If custom user data later needs an account, that is a new
+user-data project (Supabase, Firebase, or similar), not this reference
+schema. See [WORK_SLICES.md](WORK_SLICES.md).
+
 ## Active development project
 
 - Project: `Atlas-AI`
@@ -63,7 +70,6 @@ warnings. Atlas-AI therefore uses a clean, separate Supabase project.
 
 ## Next deployment gate
 
-The structured baseline is active. Asset blob upload remains disabled until the
-licensing/publication gate passes. The next engineering step is a manually
-dispatched GitHub Action that reproduces the validated transform and submits the
-same resumable private batches under protected environment approval.
+The structured baseline was loaded once and is not a runtime dependency for
+the phone app. Asset blob upload remains off. Do not add a GitHub Action
+for this path unless a hosted snapshot is deliberately revived.

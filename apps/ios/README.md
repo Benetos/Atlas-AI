@@ -59,12 +59,10 @@ category, tool-registry, and offline-answer integration checks run with the full
 pack embedded in the host app. Narrow corruption and malformed-manifest tests
 use the separate disposable fixture.
 
-Copy `Config/Secrets.xcconfig.example` to `Config/Secrets.xcconfig` and add
-the publishable Supabase key only if you want explicitly requested live Atlas
-comparisons. Supabase is never registered as a model/database tool and never
-replaces a local miss or pack error. Debug and Release xcconfigs `#include?`
-that file, so the example copy is what actually loads the key. The app runs
-fully offline without it.
+The app runs fully offline without secrets. A publishable Supabase key is
+leftover from a parked live-handbook idea and is not required. Do not add
+one unless that parked path is deliberately revived. See
+[docs/WORK_SLICES.md](../../docs/WORK_SLICES.md).
 
 Debug validates and opens the bundled full pack directly so an older simulator
 activation cannot mask the database under test. Release never bundles a pack;
@@ -90,7 +88,8 @@ and retains one rollback release. App Store signing still requires registering
 
 - `Store/SQLiteNMSStore.swift` — every canonical database capability, local FTS5, and recipe graph
 - `Store/PackLifecycle.swift` — managed download, verification, atomic activation, and rollback
-- `Store/LiveAtlasClient.swift` — optional explicit comparison outside the tool registry
+- `Store/SavedStore.swift` — local bookmarks and recents; richer artifacts are Slice 2
+- `Store/LiveAtlasClient.swift` — parked leftover, not a current player feature
 - `Store/WebSearchClient.swift` — optional Fandom + DuckDuckGo
 - `AtlasAI/` — on-device system-model session, tools, and deterministic fallback
 - `Views/` — Atlas chat, Library, entity/recipe detail, Saved, Info

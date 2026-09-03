@@ -2,183 +2,118 @@
 
 ## Outcome
 
-Atlas-AI will maintain a reproducible, queryable, and updateable No Man's Sky
-reference dataset in Supabase without copying the entire upstream repository
-into Atlas-AI's Git history.
-
-The target pipeline is:
+Atlas-AI maintains a reproducible No Man's Sky reference snapshot for the
+phone app. The player-facing database is the pinned SQLite pack, not a
+hosted API.
 
 ```text
 Pinned upstream commit
-  -> sparse local cache
+  -> sparse local cache (JSON_Files)
   -> deterministic transform and validation
-  -> private Supabase staging
-  -> transactional merge
-  -> read-only public API tables
-  -> versioned Storage assets
+  -> versioned SQLite pack + sidecar
+  -> Debug bundle or Apple-hosted Background Asset
 ```
+
+A Postgres/Supabase load path exists from an earlier idea: publish the same
+transform into read-only tables. That path is **parked**. The companion does
+not query it. If a public snapshot is ever wanted, free Supabase is enough.
+If custom user data later needs an account, that is a different hosted
+product (Supabase, Firebase, or similar) and does not replace this pack
+pipeline.
+
+Work on the app itself is sliced in [WORK_SLICES.md](WORK_SLICES.md).
 
 ## Guiding decisions
 
-1. **Pin every import.** Every dataset and asset is traceable to a full Git
-   commit SHA, source URL, input hash, and import run.
-2. **Preserve before normalizing.** Every upstream record is retained losslessly
-   in a private JSONB staging table. Stable app concepts are also projected into
-   typed public tables.
-3. **Bulk-load through Postgres.** The generated CSVs are loaded through
-   `COPY`, not thousands of Data API requests.
-4. **Expose an intentional API.** Private staging is outside the Data API.
-   Public reference tables are read-only, explicitly granted, and protected by
-   RLS.
-5. **Treat assets as versioned data.** Images are addressed by source commit and
-   stored outside Postgres. The first import may omit images while preserving
-   every source path in an asset manifest.
-6. **Do not over-normalize unknown features.** Recipes and canonical entities
-   are normalized immediately. Feature datasets remain queryable JSONB until
-   actual app screens establish their stable fields.
+1. **Pin every import.** Every dataset is traceable to a full Git commit SHA,
+   source URL, input hash, and pack sidecar.
+2. **Preserve before normalizing.** Lossless source records stay in the
+   transform output. The phone pack carries canonical entities, recipes,
+   preferred localizations, and feature payloads.
+3. **The phone pack is the product database.** Library, Atlas, and specialist
+   slices execute SQL on the installed snapshot.
+4. **Do not over-normalize unknown features.** Recipes and canonical entities
+   are typed now. Feature families stay in `nms_content_records` until a
+   slice needs filters or calculations.
+5. **Attribution, not ownership.** Atlas transforms NMS-Handbook JSON. It
+   does not copy that project’s Python or website, and it does not claim to
+   own Hello Games material.
+6. **Hosted handbook is optional and later.** Do not build runtime answers
+   against Postgres.
 
 ## Phases
 
-### Phase 0 — governance and source boundary
+### Phase 0 — source boundary
 
-Deliverables:
+Status: **done for the current product.**
 
-- Confirm GPL obligations for any reused generator or website code.
-- Review the separate rights implications of game-derived text and images.
-- Record attribution language and a publication decision for each asset class.
-- Decide whether the initial app is internal, public non-commercial, or
-  commercial.
-
-Exit criteria:
-
-- A written decision exists for source code, structured game data, localization
-  text, and images independently.
-- Public asset upload remains disabled until approved.
+- Ingest `JSON_Files` from a pinned NMS-Handbook commit.
+- Keep Atlas transformer/pack scripts in this repo.
+- Attribute the source on Info and in the README.
+- Do not bundle extracted images.
 
 ### Phase 1 — repository and reproducible source sync
 
 Status: **complete for the pinned baseline**.
 
-Deliverables:
+- Sparse clone of `JSON_Files` (and unused upstream `Python Files` cache
+  only — Atlas does not ship or execute that code).
+- Pinned commit `142d9ffd8078944722243398202f22cbef47cd02`.
+- Transform manifest with source and output hashes.
 
-- Atlas-AI repository structure and documentation.
-- Shallow partial sparse-clone script.
-- Pinned initial upstream commit.
-- Generated import manifest with source and output hashes.
+### Phase 2 — canonical entities and localizations
 
-Exit criteria:
-
-- A clean checkout can reproduce the same transformed files without fetching
-  the full texture tree.
-- No upstream JSON, MXML, or PNG files are committed to Atlas-AI.
-
-### Phase 2 — database foundation and core entities
-
-Status: **complete for the pinned baseline**.
-
-Deliverables:
-
-- Private import-run and raw-record staging tables.
-- Canonical products, substances, and technology in `nms_entities`.
-- Full English localization history, including duplicate/conflicting IDs.
-- Explicit grants and RLS for read-only public reference access.
-
-Exit criteria:
-
-- Counts and hashes reconcile with the transform manifest.
-- Anonymous clients can read approved tables and cannot mutate them.
-- Private source records are inaccessible through the Data API.
+Status: **complete in the SQLite pack**.
 
 ### Phase 3 — recipe graph and search
 
-Status: **complete for the pinned baseline**.
+Status: **complete in the SQLite pack**.
 
-Deliverables:
+FTS and recipe joins run on the device.
 
-- Crafting, refining, and cooking recipes.
-- Ordered ingredient relationships with validated entity references.
-- Full-text search index over item name, subtitle, and description.
-- Search/query fixtures for common app interactions.
+### Phase 4 — assets
 
-Exit criteria:
+Status: **not started, not blocking.**
 
-- Every transformed recipe has an output and its original ingredient order.
-- Missing entity references are either zero or explicitly allowlisted.
-- Representative searches use indexes and return expected results.
-
-### Phase 4 — selective asset pipeline
-
-Deliverables:
-
-- Asset manifest mapping game DDS references to repository PNG paths.
-- Selective fetch of referenced assets only.
-- Content hashing, immutable Storage object names, and upload reconciliation.
-- Placeholder behavior for missing or legally gated assets.
-
-Exit criteria:
-
-- The importer can run without downloading assets.
-- When enabled, only referenced and approved assets are downloaded/uploaded.
-- Re-running the upload skips unchanged hashes and never exposes write
-  credentials to the client.
+Icons stay placeholders until you want them. Do not upload extracted
+textures to a public bucket as part of the current slices.
 
 ### Phase 5 — app-driven feature projections
 
-Status: **in progress for companion app v1**.
+Status: **in progress on the phone.**
 
-First app screens are specified in [APP.md](APP.md): Atlas chat home, entity
-and recipe detail, Library browse, local Saved, and Info. The iOS client reads
-a pinned SQLite snapshot delivered as an essential Background Asset. No new
-typed feature tables until a Library screen needs them. The lossless
-`nms_content_records` payload remains the compatibility fallback.
+First screens are in [APP.md](APP.md). Next slices are the recipe planner
+and a versioned local saved-data store, then typed fish / expedition /
+building / ship families as needed. See [WORK_SLICES.md](WORK_SLICES.md).
 
-Candidate projections after v1:
+### Phase 6 — pack updates
 
-- Fish, bait, habitats, conditions, and catch requirements.
-- Expeditions, milestones, rewards, and season metadata.
-- Building, corvette, and ship-part facets.
-- Fossils, stories, legacy conversions, special purchases, and rewards.
+Status: **local and manual.**
 
-Exit criteria:
+Rebuild the pack from a new pinned commit when the source moves. Release
+can ship that pack as an Apple-hosted asset. A GitHub Action is optional
+convenience, not a required gate.
 
-- Each projection is justified by a concrete query or app screen.
-- The lossless `nms_content_records` payload remains the compatibility fallback.
-
-### Phase 6 — update automation and operations
-
-Deliverables:
-
-- Manual GitHub Action first; scheduled discovery only after the pipeline is
-  stable.
-- Validation report attached to every import run.
-- Database advisors, backup/rollback procedure, and storage reconciliation.
-- Alerting for source changes, schema drift, missing assets, or count drops.
-
-Exit criteria:
-
-- A failed import leaves the active dataset unchanged.
-- A previous import can be restored from its commit and manifest.
-- Deployment and data-import secrets exist only in GitHub/Supabase secret
-  stores.
+The parked Supabase import/activation flow is recorded in
+[SUPABASE_INGESTION.md](SUPABASE_INGESTION.md) and
+[SUPABASE_DEPLOYMENT.md](SUPABASE_DEPLOYMENT.md) in case a snapshot host
+is wanted later.
 
 ## Suggested implementation order
 
 1. ~~Review and approve the data contract and SQL schema.~~
-2. ~~Create and link a clean Atlas-AI Supabase project.~~
-3. ~~Apply and verify the canonical schema migration.~~
-4. ~~Transform the pinned source and atomically load the Atlas-AI project.~~
-5. ~~Reconcile counts, broken references, search behavior, and Data API access.~~
-6. Install the current Supabase CLI for local development and migration diffing.
-7. Ship the iOS companion against the packed SQLite snapshot ([APP.md](APP.md)).
-8. Add the asset upload only after the publication gate is approved.
-9. Promote the verified import flow into a manually dispatched GitHub Action.
+2. ~~Transform the pinned source.~~
+3. ~~Ship the iOS companion against the packed SQLite snapshot.~~
+4. Recipe planner and local saved artifacts ([WORK_SLICES.md](WORK_SLICES.md)).
+5. One specialist family at a time.
+6. Optional user-data sync only if another device or an account is wanted.
+7. Optional free-Supabase handbook snapshot only if a public read API is
+   wanted.
 
-## Definition of done for the first production import
+## Definition of done for a pack rebuild
 
 - Source commit and every input/output hash are recorded.
-- All validation checks pass or have reviewed exceptions.
-- Database merge is transactional and repeatable.
-- Public roles have read-only access only to approved objects.
-- Staging data and credentials are not publicly exposed.
-- Asset status is explicit: omitted, private, or approved public.
-- Attribution and licensing notices ship with the app and repository.
+- Validation checks pass or have reviewed exceptions.
+- Debug embeds the new production pair; Release verification still rejects
+  a bundled database.
+- Attribution remains in the app and repository.
