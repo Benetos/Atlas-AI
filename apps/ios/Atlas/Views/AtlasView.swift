@@ -1,14 +1,20 @@
 import SwiftUI
 
+@Observable
+@MainActor
+final class AtlasConversationModel {
+    var draft = ""
+    var messages: [AtlasMessage] = []
+    var busy = false
+    var confirmWeb = false
+    var pendingWebPrompt: String?
+    var narrationTask: Task<Void, Never>?
+    var sendGeneration: UInt64 = 0
+}
+
 struct AtlasView: View {
     @Environment(AppModel.self) private var model
-    @State private var draft = ""
-    @State private var messages: [AtlasMessage] = []
-    @State private var busy = false
-    @State private var confirmWeb = false
-    @State private var pendingWebPrompt: String?
-    @State private var narrationTask: Task<Void, Never>?
-    @State private var sendGeneration: UInt64 = 0
+    @Environment(AtlasConversationModel.self) private var conversation
 
     private let chips = [
         "How do I cook food?",
@@ -18,18 +24,19 @@ struct AtlasView: View {
     ]
 
     var body: some View {
-        VStack(spacing: 0) {
+        @Bindable var conversation = conversation
+        return VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 16) {
-                        if messages.isEmpty {
+                        if conversation.messages.isEmpty {
                             emptyState
                         }
-                        ForEach(messages) { message in
+                        ForEach(conversation.messages) { message in
                             messageBlock(message)
                                 .id(message.id)
                         }
-                        if busy {
+                        if conversation.busy {
                             HStack(spacing: 8) {
                                 ProgressView()
                                     .controlSize(.small)
@@ -42,8 +49,8 @@ struct AtlasView: View {
                     }
                     .padding()
                 }
-                .onChange(of: messages.count) {
-                    if let last = messages.last {
+                .onChange(of: conversation.messages.count) {
+                    if let last = conversation.messages.last {
                         withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                     }
                 }
@@ -53,23 +60,23 @@ struct AtlasView: View {
         .navigationTitle("Atlas")
         .confirmationDialog(
             "Search the internet? This query will leave the device.",
-            isPresented: $confirmWeb,
+            isPresented: $conversation.confirmWeb,
             titleVisibility: .visible
         ) {
             Button("Allow internet search") {
                 model.settings.webSearchEnabled = true
                 model.settings.webSearchConfirmed = true
-                let prompt = pendingWebPrompt ?? "Search the web for current No Man's Sky expedition"
-                pendingWebPrompt = nil
+                let prompt = conversation.pendingWebPrompt ?? "Search the web for current No Man's Sky expedition"
+                conversation.pendingWebPrompt = nil
                 Task { await send(prompt) }
             }
             Button("Cancel", role: .cancel) {
-                pendingWebPrompt = nil
+                conversation.pendingWebPrompt = nil
             }
         }
         .onChange(of: model.generationID) {
             cancelNarration()
-            sendGeneration += 1
+            conversation.sendGeneration += 1
         }
         .onDisappear {
             cancelNarration()
@@ -89,8 +96,8 @@ struct AtlasView: View {
                     if model.settings.webSearchConfirmed {
                         Task { await send("Search the web for current No Man's Sky expedition") }
                     } else {
-                        pendingWebPrompt = "Search the web for current No Man's Sky expedition"
-                        confirmWeb = true
+                        conversation.pendingWebPrompt = "Search the web for current No Man's Sky expedition"
+                        conversation.confirmWeb = true
                     }
                 } else {
                     Task { await send(title) }
@@ -133,12 +140,13 @@ struct AtlasView: View {
         case .entity(let entity):
             AtlasOpenLink(
                 destination: .entity(type: entity.entityType, id: entity.gameID),
-                section: .atlas
+                section: .atlas,
+                replacesPath: true
             ) {
                 EntityCardView(entity: entity, provenance: packedProvenance)
             }
         case .recipe(let recipe):
-            AtlasOpenLink(destination: .recipe(id: recipe.recipeID), section: .atlas) {
+            AtlasOpenLink(destination: .recipe(id: recipe.recipeID), section: .atlas, replacesPath: true) {
                 RecipeCardView(recipe: recipe, provenance: packedProvenance)
             }
         case .content(let record):
@@ -148,7 +156,8 @@ struct AtlasView: View {
                     id: record.externalID,
                     sourceOrdinal: record.sourceOrdinal
                 ),
-                section: .atlas
+                section: .atlas,
+                replacesPath: true
             ) {
                 ContentCardView(record: record, provenance: packedProvenance)
             }
@@ -161,19 +170,20 @@ struct AtlasView: View {
     }
 
     private var composer: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            TextField("Ask Atlas…", text: $draft, axis: .vertical)
+        @Bindable var conversation = conversation
+        return HStack(alignment: .bottom, spacing: 8) {
+            TextField("Ask Atlas…", text: $conversation.draft, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(1...4)
-                .disabled(busy)
+                .disabled(conversation.busy)
             Button {
-                Task { await send(draft) }
+                Task { await send(conversation.draft) }
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.title)
                     .frame(minWidth: 44, minHeight: 44)
             }
-            .disabled(busy || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(conversation.busy || conversation.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .padding()
         .background(.bar)
@@ -185,8 +195,8 @@ struct AtlasView: View {
         guard !prompt.isEmpty, let store = model.store else { return }
         let plan = await model.services.planner.plan(prompt: prompt)
         if plan.requestsWeb && !model.settings.webSearchConfirmed {
-            pendingWebPrompt = prompt
-            confirmWeb = true
+            conversation.pendingWebPrompt = prompt
+            conversation.confirmWeb = true
             return
         }
         if plan.requestsWeb && !model.settings.webSearchEnabled {
@@ -196,15 +206,15 @@ struct AtlasView: View {
             model.services.network.record("atlas.external-source-intent")
         }
         cancelNarration()
-        sendGeneration += 1
-        let token = sendGeneration
-        draft = ""
-        messages.append(AtlasMessage(role: .user, text: prompt))
-        busy = true
-        defer { busy = false }
+        conversation.sendGeneration += 1
+        let token = conversation.sendGeneration
+        conversation.draft = ""
+        conversation.messages.append(AtlasMessage(role: .user, text: prompt))
+        conversation.busy = true
+        defer { conversation.busy = false }
         let controller = AtlasSessionController(store: store, settings: model.settings)
         var reply = await controller.reply(to: prompt)
-        guard token == sendGeneration else { return }
+        guard token == conversation.sendGeneration else { return }
         if model.services.modelAvailability.current == .available,
            reply.cards.contains(where: { card in
                if case .web = card { return false }
@@ -229,14 +239,14 @@ struct AtlasView: View {
                 )
             }
         }
-        guard token == sendGeneration else { return }
+        guard token == conversation.sendGeneration else { return }
         let assistant = AtlasMessage(
             role: .assistant,
             text: reply.text,
             cards: reply.cards,
             note: reply.note
         )
-        messages.append(assistant)
+        conversation.messages.append(assistant)
         if case .entity(let entity) = reply.cards.first {
             await model.saved.remember(model.bookmark(for: entity))
         }
@@ -249,7 +259,7 @@ struct AtlasView: View {
         grounded: AtlasReply
     ) async -> NarrationResult {
         let resultBox = NarrationResultBox()
-        narrationTask = Task { @MainActor in
+        conversation.narrationTask = Task { @MainActor in
             let value = await controller.narration(to: prompt, grounded: grounded)
             await resultBox.finish(value)
         }
@@ -261,7 +271,7 @@ struct AtlasView: View {
             case .pending:
                 try? await Task.sleep(for: .milliseconds(50))
             case .finished(let value):
-                narrationTask = nil
+                conversation.narrationTask = nil
                 guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
                       !value.isEmpty
                 else { return .failed }
@@ -269,15 +279,15 @@ struct AtlasView: View {
             }
         }
 
-        narrationTask?.cancel()
-        narrationTask = nil
+        conversation.narrationTask?.cancel()
+        conversation.narrationTask = nil
         return .timedOut
     }
 
     @MainActor
     private func cancelNarration() {
-        narrationTask?.cancel()
-        narrationTask = nil
+        conversation.narrationTask?.cancel()
+        conversation.narrationTask = nil
     }
 
     private func addingNote(_ newNote: String, to existing: String?) -> String {

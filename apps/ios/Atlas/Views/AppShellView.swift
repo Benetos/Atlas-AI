@@ -3,6 +3,8 @@ import SwiftUI
 struct AppShellView: View {
     @Environment(AtlasRouter.self) private var router
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @State private var atlasConversation = AtlasConversationModel()
+    @State private var librarySession = LibrarySessionModel()
 
     var body: some View {
         Group {
@@ -12,6 +14,8 @@ struct AppShellView: View {
                 compactShell
             }
         }
+        .environment(atlasConversation)
+        .environment(librarySession)
     }
 
     private var compactShell: some View {
@@ -41,7 +45,9 @@ struct AppShellView: View {
             }
             .navigationTitle("Atlas")
         } content: {
-            sectionRoot(router.selectedSection)
+            NavigationStack {
+                sectionRoot(router.selectedSection)
+            }
         } detail: {
             regularDetail(for: router.selectedSection)
         }
@@ -90,18 +96,20 @@ struct AppShellView: View {
     @ViewBuilder
     private func regularDetail(for section: AppSection) -> some View {
         let path = router.path(for: section)
-        if let first = path.first {
+        if let projected = AtlasRouter.regularDetail(from: path) {
             NavigationStack(
                 path: Binding(
-                    get: { Array(router.path(for: section).dropFirst()) },
+                    get: {
+                        AtlasRouter.regularDetail(from: router.path(for: section))?.rest ?? []
+                    },
                     set: { newValue in
                         let current = router.path(for: section)
-                        let root = current.first ?? first
+                        let root = current.first ?? projected.root
                         router.setPath([root] + newValue, for: section)
                     }
                 )
             ) {
-                DestinationView(destination: first)
+                DestinationView(destination: projected.root)
                     .navigationDestination(for: AppDestination.self) { destination in
                         DestinationView(destination: destination)
                     }

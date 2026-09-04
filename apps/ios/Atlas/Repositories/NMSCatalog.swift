@@ -123,8 +123,11 @@ struct SQLiteNMSCatalog: NMSCatalog {
         let store = self.store
         do {
             return try await Task.detached(priority: .userInitiated) {
-                try work(store)
+                try Task.checkCancellation()
+                return try work(store)
             }.value
+        } catch is CancellationError {
+            throw CancellationError()
         } catch let error as CatalogError {
             throw error
         } catch {

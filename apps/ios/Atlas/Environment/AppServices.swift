@@ -82,6 +82,8 @@ struct AppServices {
     var planner: any ModelPlanning
     var savedDirectory: URL
     var userDefaults: UserDefaults
+    var catalog: (any NMSCatalog)?
+    var packIdentity: PackIdentity?
 
     static var live: AppServices {
         let support = FileManager.default.urls(
@@ -95,7 +97,9 @@ struct AppServices {
             modelAvailability: SystemModelAvailability(),
             planner: DeterministicModelPlanner(),
             savedDirectory: support.appendingPathComponent("SavedArtifacts", isDirectory: true),
-            userDefaults: .standard
+            userDefaults: .standard,
+            catalog: nil,
+            packIdentity: nil
         )
     }
 
@@ -104,7 +108,9 @@ struct AppServices {
         defaults: UserDefaults,
         clock: any Clock = SystemClock(),
         modelAvailability: FoundationModelAvailability = .unavailable,
-        planner: (any ModelPlanning)? = nil
+        planner: (any ModelPlanning)? = nil,
+        catalog: (any NMSCatalog)? = nil,
+        packIdentity: PackIdentity? = nil
     ) -> AppServices {
         AppServices(
             clock: clock,
@@ -113,7 +119,9 @@ struct AppServices {
             modelAvailability: FixedModelAvailability(current: modelAvailability),
             planner: planner ?? DeterministicModelPlanner(),
             savedDirectory: root.appendingPathComponent("SavedArtifacts", isDirectory: true),
-            userDefaults: defaults
+            userDefaults: defaults,
+            catalog: catalog,
+            packIdentity: packIdentity
         )
     }
 }

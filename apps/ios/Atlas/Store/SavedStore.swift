@@ -7,6 +7,7 @@ final class SavedStore {
     private let defaults: UserDefaults
     private(set) var items: [SavedItem] = []
     private(set) var recents: [SavedItem] = []
+    var lastError: String?
 
     init(artifacts: SavedArtifactsStore, defaults: UserDefaults) {
         self.artifacts = artifacts
@@ -16,7 +17,9 @@ final class SavedStore {
     func bootstrap() async {
         do {
             apply(try await artifacts.migrateLegacyBookmarksIfNeeded(defaults: defaults))
+            lastError = nil
         } catch {
+            lastError = error.localizedDescription
             apply(try? await artifacts.snapshot())
         }
     }
@@ -32,24 +35,29 @@ final class SavedStore {
             } else {
                 apply(try await artifacts.upsertBookmark(item))
             }
+            lastError = nil
         } catch {
-            return
+            lastError = error.localizedDescription
         }
     }
 
     func remember(_ item: SavedItem) async {
         do {
             apply(try await artifacts.rememberRecent(item))
+            lastError = nil
         } catch {
-            return
+            lastError = error.localizedDescription
         }
     }
 
     func removeItems(at offsets: IndexSet) async {
         let ids = offsets.compactMap { items.indices.contains($0) ? items[$0].id : nil }
         for id in ids {
-            if let snapshot = try? await artifacts.removeBookmark(id: id) {
-                apply(snapshot)
+            do {
+                apply(try await artifacts.removeBookmark(id: id))
+                lastError = nil
+            } catch {
+                lastError = error.localizedDescription
             }
         }
     }
@@ -57,8 +65,9 @@ final class SavedStore {
     func clearRecents() async {
         do {
             apply(try await artifacts.clearRecents())
+            lastError = nil
         } catch {
-            return
+            lastError = error.localizedDescription
         }
     }
 

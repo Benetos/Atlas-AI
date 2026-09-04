@@ -3,13 +3,18 @@ import SwiftUI
 struct AtlasOpenLink<Label: View>: View {
     var destination: AppDestination
     var section: AppSection
+    var replacesPath: Bool = false
     @ViewBuilder var label: () -> Label
 
     @Environment(AtlasRouter.self) private var router
 
     var body: some View {
         Button {
-            router.open(destination, in: section)
+            if replacesPath {
+                router.select(destination, in: section)
+            } else {
+                router.open(destination, in: section)
+            }
         } label: {
             label()
         }

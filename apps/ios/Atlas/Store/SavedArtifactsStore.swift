@@ -68,16 +68,22 @@ actor SavedArtifactsStore {
 
         let legacyBookmarks = Self.decodeLegacyItems(defaults.data(forKey: Self.bookmarksDefaultsKey))
         let legacyRecents = Self.decodeLegacyItems(defaults.data(forKey: Self.recentsDefaultsKey))
+        if case .invalid = legacyBookmarks {
+            return snapshot(from: document)
+        }
+        if case .invalid = legacyRecents {
+            return snapshot(from: document)
+        }
         let now = clock.now()
 
-        for item in legacyBookmarks.reversed() {
+        for item in legacyBookmarks.items.reversed() {
             if document.records.contains(where: { $0.id == item.id }) { continue }
             document.records.insert(
                 SavedArtifactRecord.bookmark(from: item, existing: nil, now: now),
                 at: 0
             )
         }
-        for item in legacyRecents.reversed() {
+        for item in legacyRecents.items.reversed() {
             if document.recents.contains(where: { $0.id == item.id }) { continue }
             document.recents.insert(
                 SavedArtifactRecord.bookmark(from: item, existing: nil, now: now),
@@ -136,11 +142,10 @@ actor SavedArtifactsStore {
                 try fileManager.removeItem(at: previousURL)
             }
             try fileManager.copyItem(at: currentURL, to: previousURL)
+            _ = try fileManager.replaceItemAt(currentURL, withItemAt: temporaryURL)
+        } else {
+            try fileManager.moveItem(at: temporaryURL, to: currentURL)
         }
-        if fileManager.fileExists(atPath: currentURL.path) {
-            try fileManager.removeItem(at: currentURL)
-        }
-        try fileManager.moveItem(at: temporaryURL, to: currentURL)
     }
 
     private func loadDocument() throws -> Document {
@@ -279,8 +284,19 @@ actor SavedArtifactsStore {
         return formatter
     }()
 
-    private static func decodeLegacyItems(_ data: Data?) -> [SavedItem] {
-        guard let data else { return [] }
+    private enum LegacyDecodeResult {
+        case missing
+        case items([SavedItem])
+        case invalid
+
+        var items: [SavedItem] {
+            if case .items(let items) = self { return items }
+            return []
+        }
+    }
+
+    private static func decodeLegacyItems(_ data: Data?) -> LegacyDecodeResult {
+        guard let data else { return .missing }
         struct LegacyItem: Codable {
             var kind: SavedItem.Kind
             var entityType: String?
@@ -292,9 +308,9 @@ actor SavedArtifactsStore {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .deferredToDate
         guard let items = try? decoder.decode([LegacyItem].self, from: data) else {
-            return []
+            return .invalid
         }
-        return items.map {
+        return .items(items.map {
             SavedItem(
                 kind: $0.kind,
                 entityType: $0.entityType,
@@ -304,6 +320,6 @@ actor SavedArtifactsStore {
                 savedAt: $0.savedAt,
                 originatingPackReleaseID: nil
             )
-        }
+        })
     }
 }

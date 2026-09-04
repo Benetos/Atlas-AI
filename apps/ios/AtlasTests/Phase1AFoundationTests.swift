@@ -23,6 +23,35 @@ final class AtlasRouterTests: XCTestCase {
         XCTAssertTrue(router.savedPath.isEmpty)
     }
 
+    func testSelectReplacesTheSectionPathAndOpenAppendsFromDetail() {
+        let router = AtlasRouter()
+        router.select(.entity(type: "substance", id: "LAND1"), in: .library)
+        router.select(.entity(type: "product", id: "FARMPROD9"), in: .library)
+        XCTAssertEqual(router.libraryPath, [.entity(type: "product", id: "FARMPROD9")])
+
+        router.open(.recipe(id: "recipe-1"), in: .library)
+        XCTAssertEqual(
+            router.libraryPath,
+            [
+                .entity(type: "product", id: "FARMPROD9"),
+                .recipe(id: "recipe-1"),
+            ]
+        )
+        router.open(.recipe(id: "recipe-1"), in: .library)
+        XCTAssertEqual(router.libraryPath.count, 2)
+    }
+
+    func testRegularDetailProjectionKeepsTheRootAndPushedRest() {
+        XCTAssertNil(AtlasRouter.regularDetail(from: []))
+        let path: [AppDestination] = [
+            .entity(type: "substance", id: "LAND1"),
+            .recipe(id: "recipe-1"),
+        ]
+        let projected = AtlasRouter.regularDetail(from: path)
+        XCTAssertEqual(projected?.root, .entity(type: "substance", id: "LAND1"))
+        XCTAssertEqual(projected?.rest, [.recipe(id: "recipe-1")])
+    }
+
     func testPopAndPathBindingShareTheSameSectionState() {
         let router = AtlasRouter()
         router.open(.entity(type: "substance", id: "LAND1"), in: .atlas)
@@ -130,8 +159,6 @@ final class CatalogAndLoadStateTests: XCTestCase {
             store: try SQLiteNMSStore(fileURL: url),
             packRole: "preview"
         )
-        let recorder = NetworkActivityRecorder()
-
         do {
             _ = try await catalog.entity(type: "substance", id: "does-not-exist")
             XCTFail("Missing entities must throw.")
@@ -139,11 +166,65 @@ final class CatalogAndLoadStateTests: XCTestCase {
             XCTAssertEqual(error, .notFound(.entity(type: "substance", id: "does-not-exist")))
         }
 
-        XCTAssertEqual(recorder.requestCount, 0)
-
         let identity = try await catalog.packIdentity()
         XCTAssertEqual(identity.packSchemaVersion, 1)
         XCTAssertFalse(identity.sourceCommitSHA.isEmpty)
+    }
+
+    func testInjectedFixtureCatalogSavesAndRelaunchesWithoutNetwork() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "atlas-appmodel-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        let suite = "atlas.appmodel.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+
+        let catalog = FixtureNMSCatalog(
+            identity: .fixture,
+            entities: [.fixtureFerrite],
+            recipes: [.fixtureCarbon],
+            records: []
+        )
+        let services = AppServices.isolated(
+            root: root,
+            defaults: defaults,
+            catalog: catalog,
+            packIdentity: .fixture
+        )
+        let model = AppModel(services: services)
+        await model.saved.bootstrap()
+        XCTAssertEqual(model.packStatus, .ready)
+        XCTAssertEqual(model.services.network.requestCount, 0)
+
+        let detail = EntityDetailModel()
+        await detail.load(
+            type: "substance",
+            id: "LAND1",
+            catalog: try XCTUnwrap(model.catalog),
+            packIdentity: model.packIdentity
+        )
+        guard case .loaded(let content) = detail.state else {
+            return XCTFail("Fixture catalog should load Ferrite Dust.")
+        }
+        XCTAssertEqual(content.usedIn.map(\.recipeID), ["refining:substance:LAND1:0"])
+        await model.saved.toggle(model.bookmark(for: content.entity))
+        XCTAssertNil(model.saved.lastError)
+        XCTAssertTrue(model.saved.isSaved(model.bookmark(for: content.entity)))
+
+        await model.refreshLiveRevision()
+        XCTAssertEqual(model.services.network.requestCount, 0)
+
+        let relaunched = SavedStore(
+            artifacts: SavedArtifactsStore(directory: services.savedDirectory, clock: services.clock),
+            defaults: defaults
+        )
+        await relaunched.bootstrap()
+        XCTAssertEqual(relaunched.items.map(\.id), ["entity:substance:LAND1"])
+        XCTAssertEqual(relaunched.items.first?.title, "Ferrite Dust")
     }
 }
 
@@ -220,6 +301,68 @@ final class SavedArtifactsStoreTests: XCTestCase {
         XCTAssertEqual(second.bookmarks.map(\.id), ["entity:substance:LAND1"])
         XCTAssertEqual(first.bookmarks.count, second.bookmarks.count)
         XCTAssertNotNil(defaults.data(forKey: SavedArtifactsStore.bookmarksDefaultsKey))
+    }
+
+    func testCorruptFileWithoutPreviousCopyStartsEmptyAndQuarantines() async throws {
+        let root = try temporaryRoot()
+        let store = SavedArtifactsStore(
+            directory: root,
+            clock: FixedClock(date: Date(timeIntervalSince1970: 1_700_000_400))
+        )
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let current = root.appendingPathComponent("saved-artifacts.json")
+        try Data("not-json".utf8).write(to: current, options: .atomic)
+
+        let snapshot = try await store.snapshot()
+        XCTAssertTrue(snapshot.bookmarks.isEmpty)
+        let quarantine = try FileManager.default.contentsOfDirectory(
+            at: root.appendingPathComponent("quarantine"),
+            includingPropertiesForKeys: nil
+        )
+        XCTAssertFalse(quarantine.isEmpty)
+    }
+
+    func testInvalidLegacyJSONDoesNotCompleteMigration() async throws {
+        let root = try temporaryRoot()
+        let suite = "atlas.saved.invalid.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(Data("{\"not\":\"an array\"}".utf8), forKey: SavedArtifactsStore.bookmarksDefaultsKey)
+
+        let store = SavedArtifactsStore(
+            directory: root,
+            clock: FixedClock(date: Date(timeIntervalSince1970: 1_700_000_500))
+        )
+        let first = try await store.migrateLegacyBookmarksIfNeeded(defaults: defaults)
+        XCTAssertTrue(first.bookmarks.isEmpty)
+
+        let current = root.appendingPathComponent("saved-artifacts.json")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: current.path))
+
+        struct LegacySavedItem: Codable {
+            var kind: String
+            var entityType: String?
+            var gameID: String?
+            var recipeID: String?
+            var title: String
+            var savedAt: Date
+        }
+        defaults.set(
+            try JSONEncoder().encode([
+                LegacySavedItem(
+                    kind: "entity",
+                    entityType: "substance",
+                    gameID: "LAND1",
+                    recipeID: nil,
+                    title: "Ferrite Dust",
+                    savedAt: Date(timeIntervalSince1970: 1_700_000_100)
+                ),
+            ]),
+            forKey: SavedArtifactsStore.bookmarksDefaultsKey
+        )
+        let second = try await store.migrateLegacyBookmarksIfNeeded(defaults: defaults)
+        XCTAssertEqual(second.bookmarks.map(\.id), ["entity:substance:LAND1"])
     }
 
     func testUnknownArtifactKindsSurviveRoundTrip() async throws {

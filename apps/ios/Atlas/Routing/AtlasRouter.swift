@@ -28,13 +28,31 @@ final class AtlasRouter {
         }
     }
 
+    func select(_ destination: AppDestination, in section: AppSection) {
+        if selectedSection != section {
+            selectedSection = section
+        }
+        setPath([destination], for: section)
+    }
+
     func open(_ destination: AppDestination, in section: AppSection) {
         if selectedSection != section {
             selectedSection = section
         }
         var path = path(for: section)
+        if path.last == destination {
+            return
+        }
         path.append(destination)
         setPath(path, for: section)
+    }
+
+    static func regularDetail(from path: [AppDestination]) -> (
+        root: AppDestination,
+        rest: [AppDestination]
+    )? {
+        guard let first = path.first else { return nil }
+        return (first, Array(path.dropFirst()))
     }
 
     func pop(in section: AppSection) {

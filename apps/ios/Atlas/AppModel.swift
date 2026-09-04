@@ -42,10 +42,19 @@ final class AppModel {
             ),
             defaults: services.userDefaults
         )
+        self.catalog = services.catalog
+        self.packIdentity = services.packIdentity
+        if services.catalog != nil {
+            packStatus = .ready
+        }
     }
 
     func bootstrap() async {
         await saved.bootstrap()
+        if services.catalog != nil {
+            packStatus = .ready
+            return
+        }
         guard !isPackUpdateRunning else { return }
         isPackUpdateRunning = true
         packStatus = .locating

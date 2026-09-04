@@ -40,7 +40,16 @@ struct UnavailableDestinationView: View {
                 router.pop(in: router.selectedSection)
             }
             Button("Refresh") {
-                model.generationID += 1
+                Task {
+                    await model.saved.bootstrap()
+                    model.generationID += 1
+                    if let key = destination.recordKey,
+                       let item = model.saved.items.first(where: { $0.id == key })
+                        ?? model.saved.recents.first(where: { $0.id == key })
+                    {
+                        router.select(item.destination, in: router.selectedSection)
+                    }
+                }
             }
             if destination.canDeleteReference, let key = destination.recordKey {
                 Button("Delete Stale Reference", role: .destructive) {
@@ -89,6 +98,7 @@ private struct SavedArtifactDestinationView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        let _ = model.generationID
         if let item = model.saved.items.first(where: { $0.id == artifactID })
             ?? model.saved.recents.first(where: { $0.id == artifactID })
         {

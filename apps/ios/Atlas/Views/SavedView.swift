@@ -5,6 +5,12 @@ struct SavedView: View {
 
     var body: some View {
         List {
+            if let error = model.saved.lastError {
+                Section {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.secondary)
+                }
+            }
             Section("Bookmarks") {
                 if model.saved.items.isEmpty {
                     Text("Bookmark items and recipes from their detail screens.")
@@ -48,7 +54,8 @@ struct SavedView: View {
     private func savedLink(_ item: SavedItem) -> some View {
         AtlasOpenLink(
             destination: .savedArtifact(id: item.id),
-            section: .saved
+            section: .saved,
+            replacesPath: true
         ) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.title)
