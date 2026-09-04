@@ -33,6 +33,7 @@ struct RecipeAlternative: Equatable, Sendable, Hashable, Identifiable {
 
 struct NodeAlternatives: Equatable, Sendable, Hashable, Identifiable {
     var nodeID: String
+    var title: String
     var recipes: [RecipeAlternative]
 
     var id: String { nodeID }
@@ -72,8 +73,10 @@ struct PlanNode: Equatable, Sendable, Hashable, Identifiable {
     var outputPerCraft: Int?
     var crafts: Int?
     var children: [PlanNode]
+    var pathID: String
 
-    var id: String { "entity:\(entityType):\(gameID)" }
+    var id: String { pathID }
+    var outlineChildren: [PlanNode]? { children.isEmpty ? nil : children }
 }
 
 struct ComputedRecipePlan: Equatable, Sendable {
@@ -105,11 +108,45 @@ struct ComputedRecipePlan: Equatable, Sendable {
                 "target": "\(targetType):\(targetID)",
                 "quantity": String(quantity),
                 "selections": selections.keys.sorted().map { "\($0)=\(selections[$0] ?? "")" }.joined(separator: ","),
+                "checklist": checklist.map { "\($0.id)=\($0.quantity)" }.joined(separator: ";"),
+                "checklistSummary": checklist.map { "\($0.quantity)× \($0.title)" }.joined(separator: "; "),
             ],
             bounds: bounds.asDictionary,
             parentEvidenceIDs: [],
             packReleaseID: packReleaseID,
-            output: checklist.map { "\($0.id)=\($0.quantity)" }.joined(separator: ";")
+            output: String(quantity)
+        )
+    }
+
+    static func snapshot(from saved: SavedRecipePlan) -> ComputedRecipePlan {
+        ComputedRecipePlan(
+            planID: saved.planID,
+            packReleaseID: saved.packReleaseID,
+            targetType: saved.targetType,
+            targetID: saved.targetID,
+            targetTitle: saved.targetTitle,
+            quantity: saved.quantity,
+            selections: saved.selections,
+            root: PlanNode(
+                entityType: saved.targetType,
+                gameID: saved.targetID,
+                title: saved.title,
+                quantity: saved.quantity,
+                kind: .leaf,
+                selectedRecipeID: nil,
+                outputPerCraft: nil,
+                crafts: nil,
+                children: [],
+                pathID: "saved:\(saved.id)"
+            ),
+            checklist: saved.checklist,
+            alternatives: [],
+            cycles: saved.cycles,
+            notices: saved.notices + ["Pack or recipe data changed. Confirm to create a new revision."],
+            truncated: saved.truncated,
+            visitedNodes: 0,
+            elapsedMilliseconds: 0,
+            bounds: saved.bounds
         )
     }
 }
@@ -259,10 +296,11 @@ struct RecipeGraphEngine: Sendable {
 
         state.visitedNodes += 1
         let nodeID = "entity:\(type):\(id)"
+        let pathID = (path + [nodeID]).joined(separator: ">")
 
         if path.contains(nodeID) {
             state.cycles.append(CycleNotice(nodeID: nodeID, path: path + [nodeID]))
-            addLeaf(
+            try addLeaf(
                 type: type,
                 id: id,
                 title: title,
@@ -280,14 +318,15 @@ struct RecipeGraphEngine: Sendable {
                 selectedRecipeID: nil,
                 outputPerCraft: nil,
                 crafts: nil,
-                children: []
+                children: [],
+                pathID: pathID
             )
         }
 
         if depth >= bounds.depth {
             state.truncated = true
             state.notices.append("Stopped expanding \(title) at depth \(depth).")
-            addLeaf(
+            try addLeaf(
                 type: type,
                 id: id,
                 title: title,
@@ -305,13 +344,14 @@ struct RecipeGraphEngine: Sendable {
                 selectedRecipeID: nil,
                 outputPerCraft: nil,
                 crafts: nil,
-                children: []
+                children: [],
+                pathID: pathID
             )
         }
 
         let producing = try await limitedAlternatives(type: type, id: id, source: source)
         if producing.isEmpty {
-            addLeaf(
+            try addLeaf(
                 type: type,
                 id: id,
                 title: title,
@@ -329,7 +369,8 @@ struct RecipeGraphEngine: Sendable {
                 selectedRecipeID: nil,
                 outputPerCraft: nil,
                 crafts: nil,
-                children: []
+                children: [],
+                pathID: pathID
             )
         }
 
@@ -341,13 +382,13 @@ struct RecipeGraphEngine: Sendable {
                 outputAmount: Self.parseAmount(recipe.outputAmount).value
             )
         }
-        state.alternatives[nodeID] = NodeAlternatives(nodeID: nodeID, recipes: alts)
+        state.alternatives[nodeID] = NodeAlternatives(nodeID: nodeID, title: title, recipes: alts)
 
         let selectedID = state.selections[nodeID] ?? producing[0].recipeID
         state.selections[nodeID] = selectedID
         guard let recipe = producing.first(where: { $0.recipeID == selectedID }) else {
             state.notices.append("Selected recipe is not in this snapshot.")
-            addLeaf(
+            try addLeaf(
                 type: type,
                 id: id,
                 title: title,
@@ -365,7 +406,8 @@ struct RecipeGraphEngine: Sendable {
                 selectedRecipeID: selectedID,
                 outputPerCraft: nil,
                 crafts: nil,
-                children: []
+                children: [],
+                pathID: pathID
             )
         }
 
@@ -389,7 +431,7 @@ struct RecipeGraphEngine: Sendable {
             let child = try await expand(
                 type: ingredient.entityType,
                 id: ingredient.gameID,
-                title: ingredient.title ?? childTitle,
+                title: childTitle,
                 quantity: needed,
                 path: path + [nodeID],
                 depth: depth + 1,
@@ -409,7 +451,8 @@ struct RecipeGraphEngine: Sendable {
             selectedRecipeID: recipe.recipeID,
             outputPerCraft: parsedOutput.value,
             crafts: crafts,
-            children: children
+            children: children,
+            pathID: pathID
         )
     }
 
@@ -433,10 +476,10 @@ struct RecipeGraphEngine: Sendable {
         isCycle: Bool,
         isTruncated: Bool,
         state: inout ExpansionState
-    ) {
+    ) throws {
         let key = "leaf:\(type):\(id)"
         if var existing = state.leaves[key] {
-            existing.quantity = (try? Quantity.sum(existing.quantity, quantity)) ?? existing.quantity
+            existing.quantity = try Quantity.sum(existing.quantity, quantity)
             existing.isCycle = existing.isCycle || isCycle
             existing.isTruncated = existing.isTruncated || isTruncated
             state.leaves[key] = existing

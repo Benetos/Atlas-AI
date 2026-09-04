@@ -205,9 +205,11 @@ struct SavedArtifactRecord: Equatable, Sendable {
         from plan: SavedRecipePlan,
         existing: SavedArtifactRecord?,
         now: Date
-    ) -> SavedArtifactRecord {
-        let data = (try? SavedRecipePlan.encoder.encode(plan)) ?? Data("{}".utf8)
-        let payload = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+    ) throws -> SavedArtifactRecord {
+        let data = try SavedRecipePlan.encoder.encode(plan)
+        guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw CatalogError.failure("Could not encode recipe plan.")
+        }
         return SavedArtifactRecord(
             id: plan.id,
             kind: SavedArtifactKind.recipePlan.rawValue,

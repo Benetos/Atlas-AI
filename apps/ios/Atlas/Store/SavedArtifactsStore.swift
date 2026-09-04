@@ -43,7 +43,7 @@ actor SavedArtifactsStore {
         var document = try loadDocument()
         let now = clock.now()
         let existing = document.records.first { $0.id == plan.id }
-        let record = SavedArtifactRecord.recipePlan(from: plan, existing: existing, now: now)
+        let record = try SavedArtifactRecord.recipePlan(from: plan, existing: existing, now: now)
         document.records.removeAll { $0.id == plan.id }
         document.records.insert(record, at: 0)
         try persist(document)

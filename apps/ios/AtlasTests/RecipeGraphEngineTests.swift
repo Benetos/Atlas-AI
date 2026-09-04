@@ -38,6 +38,8 @@ final class RecipeGraphEngineTests: XCTestCase {
         XCTAssertEqual(plan.checklist[0].gameID, "C")
         XCTAssertEqual(plan.checklist[0].quantity, 18)
         XCTAssertEqual(plan.derivedEvidence.engineName, "recipe-graph")
+        XCTAssertEqual(Int(plan.derivedEvidence.output), 3)
+        XCTAssertEqual(plan.derivedEvidence.normalizedInputs["checklistSummary"], "18× Carbon")
         XCTAssertTrue(plan.derivedEvidence.provenanceLabel.hasPrefix("Calculated from pack"))
         XCTAssertFalse(plan.planID.isEmpty)
     }
@@ -70,6 +72,8 @@ final class RecipeGraphEngineTests: XCTestCase {
             source: source
         )
         XCTAssertEqual(defaultPlan.alternatives.first?.recipes.count, 2)
+        XCTAssertEqual(defaultPlan.alternatives.first?.title, "Carbon")
+        XCTAssertFalse(defaultPlan.alternatives.first?.recipes.contains(where: { $0.title.isEmpty }) == true)
         XCTAssertEqual(defaultPlan.checklist.first?.gameID, "B")
 
         let selected = try await RecipeGraphEngine().plan(
@@ -282,6 +286,41 @@ final class RecipeGraphEngineTests: XCTestCase {
         XCTAssertEqual(try RecipeGraphEngine.craftsNeeded(quantity: 999_999, outputPerCraft: 1), 999_999)
         XCTAssertEqual(try RecipeGraphEngine.craftsNeeded(quantity: 5, outputPerCraft: 2), 3)
         XCTAssertThrowsError(try Quantity.product(999_999, 2))
+        XCTAssertThrowsError(try Quantity.sum(999_999, 1))
+    }
+
+    func testMergedLeafOverflowFailsClosed() async {
+        let source = InMemoryRecipeGraphSource(
+            recipes: [
+                Self.recipe(
+                    id: "craft:A",
+                    outputType: "product",
+                    outputID: "A",
+                    outputAmount: "1",
+                    ingredients: [("substance", "C", "999999"), ("substance", "C", "1")]
+                ),
+            ],
+            titles: ["product:A": "Circuit Board", "substance:C": "Carbon"]
+        )
+        do {
+            _ = try await RecipeGraphEngine().plan(
+                targetType: "product",
+                targetID: "A",
+                quantity: 1,
+                packReleaseID: "pack-1",
+                source: source
+            )
+            XCTFail("Leaf overflow must fail closed")
+        } catch let error as ConversationBoundError {
+            switch error {
+            case .quantityOverflow, .quantityOutOfRange:
+                break
+            default:
+                XCTFail("Expected quantity bound, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected ConversationBoundError, got \(error)")
+        }
     }
 
     func testProgressTransfersOnlyExactLineIdentities() {
@@ -399,6 +438,7 @@ final class RecipeGraphEngineTests: XCTestCase {
             revision: 1,
             predecessorID: nil,
             title: "3× Circuit Board",
+            targetTitle: "Circuit Board",
             targetType: "product",
             targetID: "A",
             quantity: 3,
@@ -492,15 +532,22 @@ final class RecipeGraphEngineTests: XCTestCase {
         ]
         let diff = RecipePlanRecomputeDiff.compare(saved: saved, computed: stale)
         XCTAssertTrue(diff.packChanged)
+        XCTAssertFalse(diff.engineChanged)
         XCTAssertEqual(diff.missingLineIDs, ["leaf:substance:C"])
         XCTAssertEqual(diff.newLineIDs, ["leaf:substance:D"])
 
+        var engineMismatch = saved
+        engineMismatch.engineVersion = "0"
+        XCTAssertTrue(RecipePlanRecomputeDiff.compare(saved: engineMismatch, computed: sourcePlan).engineChanged)
+
         XCTAssertFalse(LocalToolName.coreNames.contains("plan_recipe"))
+        XCTAssertFalse(LocalToolName.coreNames.contains("compare_recipe_paths"))
         let catalog = FixtureNMSCatalog(
             identity: pack,
             entities: [
                 Self.entity(type: "product", id: "A", title: "Circuit Board"),
                 Self.entity(type: "substance", id: "C", title: "Carbon"),
+                Self.entity(type: "substance", id: "D", title: "Oxygen"),
             ],
             recipes: [
                 Self.recipe(
@@ -509,7 +556,14 @@ final class RecipeGraphEngineTests: XCTestCase {
                     outputID: "A",
                     outputAmount: "1",
                     ingredients: [("substance", "C", "6")]
-                )
+                ),
+                Self.recipe(
+                    id: "refine:A",
+                    outputType: "product",
+                    outputID: "A",
+                    outputAmount: "1",
+                    ingredients: [("substance", "D", "4")]
+                ),
             ],
             records: []
         )
@@ -523,10 +577,242 @@ final class RecipeGraphEngineTests: XCTestCase {
         XCTAssertEqual(output.status, .ok)
         XCTAssertFalse(output.evidenceIDs.isEmpty)
         if case .message(let summary) = output.payload {
-            XCTAssertTrue(summary.contains("18×"))
+            XCTAssertTrue(summary.contains("18×") || summary.contains("12×"))
         } else {
             XCTFail("plan_recipe must return a typed message payload")
         }
+
+        let compared = try await tools.invoke(
+            LocalToolCall(
+                name: "compare_recipe_paths",
+                query: "refine:A",
+                entityType: "product",
+                gameID: "A",
+                recipeID: "craft:A",
+                quantity: 3
+            )
+        )
+        XCTAssertEqual(compared.status, .ok)
+        XCTAssertEqual(compared.evidenceIDs.count, 2)
+        if case .message(let summary) = compared.payload {
+            XCTAssertTrue(summary.contains("18×"))
+            XCTAssertTrue(summary.contains("12×"))
+            XCTAssertTrue(summary.contains("Carbon"))
+            XCTAssertTrue(summary.contains("Oxygen"))
+        } else {
+            XCTFail("compare_recipe_paths must return a typed message payload")
+        }
+    }
+
+    func testNeedQuantityPromptDropsIntegerFromLocalSearch() {
+        let plan = AtlasQueryPlan(prompt: "I need 12 Circuit Boards")
+        XCTAssertEqual(plan.source, .local)
+        XCTAssertEqual(plan.localQuery, "Circuit Boards")
+        XCTAssertFalse(plan.localQuery?.contains("12") == true)
+        XCTAssertEqual(plan.localSearchQueries, ["Circuit Boards", "circuit board"])
+        XCTAssertEqual(RecipePlanIntent.quantity(from: plan.originalPrompt), 12)
+    }
+
+    func testNeedTwelveCircuitBoardsGroundedPlanWhenModelUnavailable() async {
+        let catalog = FixtureNMSCatalog(
+            identity: Self.pack,
+            entities: [
+                Self.entity(type: "product", id: "A", title: "Circuit Board"),
+                Self.entity(type: "substance", id: "C", title: "Carbon"),
+            ],
+            recipes: [
+                Self.recipe(
+                    id: "craft:A",
+                    outputType: "product",
+                    outputID: "A",
+                    outputAmount: "1",
+                    ingredients: [("substance", "C", "6")]
+                ),
+            ],
+            records: []
+        )
+        let engine = AtlasConversationEngine()
+        let turn = await engine.reply(
+            ConversationTurnRequest(
+                prompt: "I need 12 Circuit Boards",
+                turnID: "turn-1",
+                generation: 1,
+                packIdentity: Self.pack,
+                catalog: catalog,
+                snapshot: SourcePolicySnapshot(
+                    liveAtlasCapabilityEnabled: false,
+                    webSearchCapabilityEnabled: false,
+                    packAvailable: true
+                ),
+                receipts: [],
+                external: .empty,
+                flags: .disabled,
+                modelAvailability: .unavailable,
+                identifiers: UUIDIdentifierSource(),
+                clock: FixedClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+            ),
+            queryPlanner: DeterministicModelPlanner(),
+            proposedPlanner: DeterministicTurnPlanner()
+        )
+        XCTAssertTrue(turn.usedDeterministicFallback)
+        XCTAssertTrue(turn.text.contains("recipe-graph calculated 12"))
+        XCTAssertTrue(turn.text.contains("72× Carbon") || turn.text.contains("Gather 72×"))
+        XCTAssertTrue(turn.note?.contains("Calculated from pack") == true)
+        XCTAssertTrue(turn.cards.contains { card in
+            guard case .entity(let entity) = card else { return false }
+            return entity.title == "Circuit Board"
+        })
+        XCTAssertTrue(turn.followUps.contains { chip in
+            if case .plan(let type, let id, let quantity) = chip.intent {
+                return type == "product" && id == "A" && quantity == 12
+            }
+            return false
+        })
+        XCTAssertTrue(turn.followUps.contains { $0.label.contains("12") && $0.label.lowercased().contains("plan") })
+        XCTAssertFalse(turn.text.localizedCaseInsensitiveContains("http"))
+        XCTAssertFalse(turn.note?.localizedCaseInsensitiveContains("http") == true)
+    }
+
+    @MainActor
+    func testRecipePlanModelPersistsProgressAndPackChangeKeepsOriginalRevision() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "atlas-plan-model-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "atlas.plan.\(UUID().uuidString)"))
+        let saved = SavedStore(
+            artifacts: SavedArtifactsStore(directory: root, clock: FixedClock(date: now)),
+            defaults: defaults
+        )
+        await saved.bootstrap()
+
+        let pack1 = PackIdentity(
+            sourceCommitSHA: "pack-1",
+            packSchemaVersion: 1,
+            contractVersion: 1,
+            generatedAt: "2026-09-04T00:00:00Z",
+            packRole: "preview"
+        )
+        let pack2 = PackIdentity(
+            sourceCommitSHA: "pack-2",
+            packSchemaVersion: 1,
+            contractVersion: 1,
+            generatedAt: "2026-09-04T00:00:00Z",
+            packRole: "preview"
+        )
+        let firstCatalog = Self.boardCatalog(pack: pack1, ingredientID: "C", ingredientTitle: "Carbon", amount: "6")
+        let secondCatalog = Self.boardCatalog(pack: pack2, ingredientID: "D", ingredientTitle: "Oxygen", amount: "4")
+        let identifiers = CountingIdentifierSource()
+        let feature = RecipePlanModel(quantity: 3)
+
+        await feature.load(
+            type: "product",
+            id: "A",
+            catalog: firstCatalog,
+            packIdentity: pack1,
+            saved: saved
+        )
+        guard case .loaded(let live) = feature.state else {
+            return XCTFail("Expected a live plan")
+        }
+        XCTAssertEqual(live.checklist.first?.gameID, "C")
+        XCTAssertEqual(live.checklist.first?.quantity, 18)
+
+        await feature.save(identifiers: identifiers, clock: FixedClock(date: now), saved: saved)
+        let originalID = try XCTUnwrap(feature.artifactID)
+        XCTAssertEqual(saved.recipePlans.count, 1)
+        XCTAssertEqual(saved.recipePlans.first?.packReleaseID, "pack-1")
+
+        let lineID = try XCTUnwrap(live.checklist.first?.id)
+        await feature.toggleProgress(lineID: lineID, clock: FixedClock(date: now), saved: saved)
+        XCTAssertEqual(saved.recipePlans.first?.progress[lineID], true)
+
+        let relaunched = RecipePlanModel(quantity: 1, artifactID: originalID)
+        await relaunched.load(
+            type: "product",
+            id: "A",
+            catalog: firstCatalog,
+            packIdentity: pack1,
+            saved: saved
+        )
+        XCTAssertEqual(relaunched.progress[lineID], true)
+        XCTAssertEqual(relaunched.quantity, 3)
+        XCTAssertNil(relaunched.recomputeDiff)
+
+        await feature.load(
+            type: "product",
+            id: "A",
+            catalog: secondCatalog,
+            packIdentity: pack2,
+            saved: saved
+        )
+        XCTAssertTrue(feature.isFrozen)
+        XCTAssertEqual(feature.recomputeDiff?.packChanged, true)
+        XCTAssertEqual(feature.recomputePreview?.checklist.first?.gameID, "D")
+        if case .loaded(let snapshot) = feature.state {
+            XCTAssertEqual(snapshot.checklist.first?.gameID, "C")
+            XCTAssertTrue(snapshot.alternatives.isEmpty)
+            XCTAssertEqual(snapshot.targetTitle, "Circuit Board")
+        } else {
+            XCTFail("Frozen load must present the saved snapshot")
+        }
+
+        feature.quantity = 99
+        await feature.save(identifiers: identifiers, clock: FixedClock(date: now), saved: saved)
+        let afterFrozenSave = try XCTUnwrap(saved.recipePlan(id: originalID))
+        XCTAssertEqual(afterFrozenSave.quantity, 3)
+        XCTAssertEqual(afterFrozenSave.packReleaseID, "pack-1")
+        XCTAssertEqual(afterFrozenSave.checklist.first?.gameID, "C")
+        XCTAssertEqual(afterFrozenSave.progress[lineID], true)
+        XCTAssertEqual(saved.recipePlans.count, 1)
+
+        await feature.confirmRecompute(
+            identifiers: identifiers,
+            clock: FixedClock(date: now),
+            saved: saved
+        )
+        XCTAssertEqual(saved.recipePlans.count, 2)
+        let original = try XCTUnwrap(saved.recipePlan(id: originalID))
+        XCTAssertEqual(original.revision, 1)
+        XCTAssertEqual(original.packReleaseID, "pack-1")
+        XCTAssertEqual(original.quantity, 3)
+        let nextID = try XCTUnwrap(feature.artifactID)
+        XCTAssertNotEqual(nextID, originalID)
+        let next = try XCTUnwrap(saved.recipePlan(id: nextID))
+        XCTAssertEqual(next.revision, 2)
+        XCTAssertEqual(next.predecessorID, originalID)
+        XCTAssertEqual(next.packReleaseID, "pack-2")
+        XCTAssertEqual(next.checklist.first?.gameID, "D")
+        XCTAssertFalse(feature.isFrozen)
+    }
+
+    private static func boardCatalog(
+        pack: PackIdentity,
+        ingredientID: String,
+        ingredientTitle: String,
+        amount: String
+    ) -> FixtureNMSCatalog {
+        FixtureNMSCatalog(
+            identity: pack,
+            entities: [
+                entity(type: "product", id: "A", title: "Circuit Board"),
+                entity(type: "substance", id: ingredientID, title: ingredientTitle),
+            ],
+            recipes: [
+                recipe(
+                    id: "craft:A",
+                    outputType: "product",
+                    outputID: "A",
+                    outputAmount: "1",
+                    ingredients: [("substance", ingredientID, amount)]
+                ),
+            ],
+            records: []
+        )
     }
 
     private static let pack = PackIdentity(
@@ -588,5 +874,17 @@ final class RecipeGraphEngineTests: XCTestCase {
             },
             outputTitle: outputID
         )
+    }
+}
+
+private final class CountingIdentifierSource: IdentifierSource, @unchecked Sendable {
+    private let lock = NSLock()
+    private var next = 0
+
+    func makeID() -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        next += 1
+        return "n\(next)"
     }
 }

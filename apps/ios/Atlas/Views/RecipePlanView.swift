@@ -3,6 +3,7 @@ import SwiftUI
 struct RecipePlanView: View {
     @Environment(AppModel.self) private var model
     @Environment(AtlasRouter.self) private var router
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var targetType: String
     var targetID: String
@@ -49,14 +50,22 @@ struct RecipePlanView: View {
                         }
                         .frame(minHeight: 44)
                     }
+                    if let preview = feature.recomputePreview {
+                        Section("New revision preview") {
+                            ForEach(Array(preview.checklist.enumerated()), id: \.offset) { _, line in
+                                Text("\(line.quantity)× \(line.title)")
+                            }
+                        }
+                    }
                 }
                 Section("Target") {
                     Stepper(value: $feature.quantity, in: ConversationBounds.quantityRange) {
                         Text("Quantity \(feature.quantity)")
                     }
                     .frame(minHeight: 44)
-                    .disabled(feature.recomputeDiff?.hasChanges == true)
+                    .disabled(feature.isFrozen)
                     .onChange(of: feature.quantity) {
+                        guard !feature.isFrozen else { return }
                         Task { await reload() }
                     }
                     SourceBadge(
@@ -73,71 +82,41 @@ struct RecipePlanView: View {
                 }
                 if !plan.notices.isEmpty {
                     Section("Notes") {
-                        ForEach(plan.notices, id: \.self) { notice in
+                        ForEach(Array(plan.notices.enumerated()), id: \.offset) { _, notice in
                             Text(notice)
                         }
                     }
                 }
                 if !plan.cycles.isEmpty {
                     Section("Cycles") {
-                        ForEach(plan.cycles, id: \.path) { cycle in
+                        ForEach(Array(plan.cycles.enumerated()), id: \.offset) { _, cycle in
                             Text(cycle.path.joined(separator: " → "))
                                 .font(.footnote)
                         }
                     }
                 }
-                if !plan.alternatives.filter({ $0.recipes.count > 1 }).isEmpty {
+                if !feature.isFrozen,
+                   !plan.alternatives.filter({ $0.recipes.count > 1 }).isEmpty {
                     Section("Alternate routes") {
                         ForEach(plan.alternatives.filter { $0.recipes.count > 1 }) { group in
-                            Picker(group.nodeID, selection: selectionBinding(group.nodeID)) {
+                            Picker(group.title, selection: selectionBinding(group.nodeID)) {
                                 ForEach(group.recipes) { recipe in
                                     Text("\(recipe.title) (\(recipe.recipeKind))")
                                         .tag(recipe.recipeID)
                                 }
                             }
                             .frame(minHeight: 44)
+                            .disabled(feature.isFrozen)
                         }
                     }
                 }
-                Section("Dependencies") {
-                    PlanTreeRows(node: plan.root, depth: 0)
-                }
-                Section("Checklist") {
-                    if plan.checklist.isEmpty {
-                        Text("Nothing to gather.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(plan.checklist) { line in
-                            HStack {
-                                Button {
-                                    feature.toggleProgress(lineID: line.id)
-                                } label: {
-                                    HStack {
-                                        Image(systemName: feature.progress[line.id] == true ? "checkmark.circle.fill" : "circle")
-                                        VStack(alignment: .leading) {
-                                            Text("\(line.quantity)× \(line.title)")
-                                            if line.isCycle {
-                                                Text("Cycle").font(.caption).foregroundStyle(.secondary)
-                                            }
-                                            if line.isTruncated {
-                                                Text("Truncated").font(.caption).foregroundStyle(.secondary)
-                                            }
-                                        }
-                                        Spacer()
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                                .frame(minHeight: 44)
-                                AtlasOpenLink(
-                                    destination: .entity(type: line.entityType, id: line.gameID),
-                                    section: router.selectedSection
-                                ) {
-                                    Image(systemName: "chevron.forward")
-                                        .frame(minWidth: 44, minHeight: 44)
-                                }
-                            }
-                        }
+                if !feature.isFrozen {
+                    Section("Dependencies") {
+                        PlanTreeRows(node: plan.root)
                     }
+                }
+                Section(feature.isFrozen ? "Saved checklist" : "Checklist") {
+                    checklist(for: plan.checklist)
                 }
             }
             .toolbar {
@@ -170,12 +149,75 @@ struct RecipePlanView: View {
         return "Plan"
     }
 
+    @ViewBuilder
+    private func checklist(for lines: [ChecklistLine]) -> some View {
+        if lines.isEmpty {
+            Text("Nothing to gather.")
+                .foregroundStyle(.secondary)
+        } else {
+            ForEach(lines) { line in
+                checklistRow(line)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func checklistRow(_ line: ChecklistLine) -> some View {
+        let check = Button {
+            Task {
+                await feature.toggleProgress(
+                    lineID: line.id,
+                    clock: model.services.clock,
+                    saved: model.saved
+                )
+            }
+        } label: {
+            HStack {
+                Image(systemName: feature.progress[line.id] == true ? "checkmark.circle.fill" : "circle")
+                VStack(alignment: .leading) {
+                    Text("\(line.quantity)× \(line.title)")
+                    if line.isCycle {
+                        Text("Cycle").font(.caption).foregroundStyle(.secondary)
+                    }
+                    if line.isTruncated {
+                        Text("Truncated").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Spacer()
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .frame(minHeight: 44)
+
+        let link = AtlasOpenLink(
+            destination: .entity(type: line.entityType, id: line.gameID),
+            section: router.selectedSection
+        ) {
+            Image(systemName: "chevron.forward")
+                .frame(minWidth: 44, minHeight: 44)
+        }
+
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 8) {
+                check
+                link
+            }
+        } else {
+            HStack {
+                check
+                link
+            }
+        }
+    }
+
     private func selectionBinding(_ nodeID: String) -> Binding<String> {
         Binding(
             get: { feature.selections[nodeID] ?? "" },
             set: { recipeID in
                 Task {
-                    guard let catalog = model.catalog else { return }
+                    guard !feature.isFrozen, let catalog = model.catalog else { return }
                     await feature.selectAlternative(
                         nodeID: nodeID,
                         recipeID: recipeID,
@@ -193,6 +235,7 @@ struct RecipePlanView: View {
     private func recomputeSummary(_ diff: RecipePlanRecomputeDiff) -> String {
         var parts: [String] = []
         if diff.packChanged { parts.append("The installed pack changed.") }
+        if diff.engineChanged { parts.append("The planner engine changed.") }
         if !diff.changedQuantities.isEmpty { parts.append("Some quantities changed.") }
         if !diff.missingLineIDs.isEmpty { parts.append("Some ingredients disappeared.") }
         if !diff.newLineIDs.isEmpty { parts.append("New ingredients appeared.") }
@@ -219,20 +262,28 @@ struct RecipePlanView: View {
 
 private struct PlanTreeRows: View {
     var node: PlanNode
-    var depth: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(String(repeating: "  ", count: depth) + label)
-                Spacer()
-                Text(node.kind.rawValue).font(.caption2).foregroundStyle(.secondary)
+        if let children = node.outlineChildren {
+            DisclosureGroup {
+                ForEach(children) { child in
+                    PlanTreeRows(node: child)
+                }
+            } label: {
+                row
             }
-            .accessibilityElement(children: .combine)
-            ForEach(Array(node.children.enumerated()), id: \.offset) { _, child in
-                PlanTreeRows(node: child, depth: depth + 1)
-            }
+        } else {
+            row
         }
+    }
+
+    private var row: some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Text(node.kind.rawValue).font(.caption2).foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     private var label: String {

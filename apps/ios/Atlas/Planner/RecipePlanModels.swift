@@ -23,6 +23,7 @@ struct SavedRecipePlan: Equatable, Sendable, Identifiable, Hashable, Codable {
     var revision: Int
     var predecessorID: String?
     var title: String
+    var targetTitle: String
     var targetType: String
     var targetID: String
     var quantity: Int
@@ -73,6 +74,7 @@ struct SavedRecipePlan: Equatable, Sendable, Identifiable, Hashable, Codable {
             revision: revision,
             predecessorID: predecessorID,
             title: "\(plan.quantity)× \(plan.targetTitle)",
+            targetTitle: plan.targetTitle,
             targetType: plan.targetType,
             targetID: plan.targetID,
             quantity: plan.quantity,
@@ -110,10 +112,12 @@ struct RecipePlanRecomputeDiff: Equatable, Sendable {
     var newLineIDs: [String]
     var changedQuantities: [String: (was: Int, now: Int)]
     var packChanged: Bool
+    var engineChanged: Bool
     var recipeMissing: Bool
 
     var hasChanges: Bool {
-        packChanged || recipeMissing || !missingLineIDs.isEmpty || !newLineIDs.isEmpty || !changedQuantities.isEmpty
+        packChanged || engineChanged || recipeMissing
+            || !missingLineIDs.isEmpty || !newLineIDs.isEmpty || !changedQuantities.isEmpty
     }
 
     static func compare(saved: SavedRecipePlan, computed: ComputedRecipePlan) -> RecipePlanRecomputeDiff {
@@ -130,6 +134,7 @@ struct RecipePlanRecomputeDiff: Equatable, Sendable {
             newLineIDs: computed.checklist.map(\.id).filter { !oldIDs.contains($0) },
             changedQuantities: changed,
             packChanged: saved.packReleaseID != computed.packReleaseID,
+            engineChanged: saved.engineVersion != computed.engineVersion,
             recipeMissing: computed.root.kind == .missingRecipe
         )
     }

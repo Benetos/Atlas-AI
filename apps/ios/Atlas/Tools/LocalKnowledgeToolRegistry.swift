@@ -11,7 +11,7 @@ struct LocalKnowledgeToolRegistry: Sendable {
     var database: LocalDatabaseToolRegistry
     var calculationToolNames: [String]
 
-    init(database: LocalDatabaseToolRegistry, calculationToolNames: [String] = ["scale_quantity", "plan_recipe"]) {
+    init(database: LocalDatabaseToolRegistry, calculationToolNames: [String] = ["scale_quantity", "plan_recipe", "compare_recipe_paths"]) {
         self.database = database
         self.calculationToolNames = calculationToolNames
     }
@@ -26,6 +26,8 @@ struct LocalKnowledgeToolRegistry: Sendable {
             return scaleQuantity(call)
         case "plan_recipe":
             return try await planRecipe(call)
+        case "compare_recipe_paths":
+            return try await compareRecipePaths(call)
         default:
             return try await database.invoke(call)
         }
@@ -118,6 +120,69 @@ struct LocalKnowledgeToolRegistry: Sendable {
                 sourceSHA: database.packIdentity.sourceCommitSHA,
                 payload: .message(summary.isEmpty ? String(quantity) : summary),
                 notice: plan.derivedEvidence.provenanceLabel
+            )
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return rejected(name: call.name, message: error.localizedDescription)
+        }
+    }
+
+    private func compareRecipePaths(_ call: LocalToolCall) async throws -> LocalToolOutput {
+        guard let type = call.entityType, let id = call.gameID, !type.isEmpty, !id.isEmpty else {
+            return rejected(name: call.name, message: "Missing entity identity")
+        }
+        guard let firstID = call.recipeID, !firstID.isEmpty,
+              let secondID = call.query, !secondID.isEmpty, firstID != secondID
+        else {
+            return rejected(name: call.name, message: "Compare needs two different recipe IDs.")
+        }
+        let rawQuantity = call.quantity.map(String.init) ?? "1"
+        do {
+            try Task.checkCancellation()
+            let quantity = try Quantity.parse(rawQuantity)
+            let nodeID = "entity:\(type):\(id)"
+            let source = database.catalog.asRecipeGraphSource()
+            let first = try await RecipeGraphEngine().plan(
+                targetType: type,
+                targetID: id,
+                quantity: quantity,
+                packReleaseID: database.packIdentity.sourceCommitSHA,
+                source: source,
+                selections: [nodeID: firstID]
+            )
+            try Task.checkCancellation()
+            let second = try await RecipeGraphEngine().plan(
+                targetType: type,
+                targetID: id,
+                quantity: quantity,
+                packReleaseID: database.packIdentity.sourceCommitSHA,
+                source: source,
+                selections: [nodeID: secondID]
+            )
+            try Task.checkCancellation()
+            let issuedFirst = database.ledger.issue(payload: .derived(first.derivedEvidence), source: .calculated)
+            let issuedSecond = database.ledger.issue(payload: .derived(second.derivedEvidence), source: .calculated)
+            let firstIDs = Set(first.checklist.map(\.id))
+            let secondIDs = Set(second.checklist.map(\.id))
+            let onlyFirst = first.checklist.filter { !secondIDs.contains($0.id) }
+                .map { "\($0.quantity)× \($0.title)" }
+            let onlySecond = second.checklist.filter { !firstIDs.contains($0.id) }
+                .map { "\($0.quantity)× \($0.title)" }
+            let summary = [
+                "Path \(firstID): " + first.checklist.map { "\($0.quantity)× \($0.title)" }.joined(separator: ", "),
+                "Path \(secondID): " + second.checklist.map { "\($0.quantity)× \($0.title)" }.joined(separator: ", "),
+                onlyFirst.isEmpty ? nil : "Only in first: " + onlyFirst.joined(separator: ", "),
+                onlySecond.isEmpty ? nil : "Only in second: " + onlySecond.joined(separator: ", "),
+            ].compactMap { $0 }.joined(separator: " | ")
+            return LocalToolOutput(
+                name: call.name,
+                status: .ok,
+                evidenceIDs: [issuedFirst.evidenceID, issuedSecond.evidenceID],
+                packReleaseID: database.packIdentity.sourceCommitSHA,
+                sourceSHA: database.packIdentity.sourceCommitSHA,
+                payload: .message(summary),
+                notice: first.derivedEvidence.provenanceLabel
             )
         } catch is CancellationError {
             throw CancellationError()

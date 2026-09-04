@@ -80,7 +80,11 @@ struct AtlasQueryPlan: Equatable, Sendable {
         let candidateTokens = Self.tokens(in: withoutDomain)
         let resolvedEntityType = Self.entityType(for: candidateTokens.map { $0.lowercased() })
         entityType = resolvedEntityType
+        let dropQuantityToken = RecipePlanIntent.quantity(from: normalized) != nil
         let searchableTokens = candidateTokens.filter { token in
+            if dropQuantityToken, Int(token) != nil {
+                return false
+            }
             if let resolvedEntityType,
                Self.entityTypeTerms[resolvedEntityType]?.contains(token.lowercased()) == true {
                 return false

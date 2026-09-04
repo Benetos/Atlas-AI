@@ -16,6 +16,8 @@ final class RecipePlanModel {
     private var loadGeneration: UInt64 = 0
     private var didHydrateSavedPlan = false
 
+    var isFrozen: Bool { recomputeDiff?.hasChanges == true }
+
     init(quantity: Int = 1, selections: [String: String] = [:], artifactID: String? = nil) {
         self.quantity = quantity
         self.selections = selections
@@ -40,13 +42,15 @@ final class RecipePlanModel {
                 didHydrateSavedPlan = true
             }
         }
+        if isFrozen, let savedRevision {
+            quantity = savedRevision.quantity
+            selections = savedRevision.selections
+        }
         state = .loading
         lastError = nil
-        recomputePreview = nil
-        recomputeDiff = nil
         do {
             let quantity = try Quantity.checked(self.quantity)
-            let plan = try await RecipeGraphEngine().plan(
+            var plan = try await RecipeGraphEngine().plan(
                 targetType: type,
                 targetID: id,
                 quantity: quantity,
@@ -56,19 +60,46 @@ final class RecipePlanModel {
             )
             try Task.checkCancellation()
             guard token == loadGeneration else { return }
-            selections = plan.selections
-            if let savedRevision,
-               savedRevision.quantity == plan.quantity,
-               savedRevision.selections == plan.selections {
+
+            if let savedRevision {
+                let packOrEngineStale = savedRevision.packReleaseID != plan.packReleaseID
+                    || savedRevision.engineVersion != ComputedRecipePlan.engineVersion
+                if packOrEngineStale,
+                   savedRevision.quantity != plan.quantity
+                    || savedRevision.selections != plan.selections {
+                    plan = try await RecipeGraphEngine().plan(
+                        targetType: type,
+                        targetID: id,
+                        quantity: savedRevision.quantity,
+                        packReleaseID: packIdentity?.sourceCommitSHA ?? "",
+                        source: catalog.asRecipeGraphSource(),
+                        selections: savedRevision.selections
+                    )
+                    try Task.checkCancellation()
+                    guard token == loadGeneration else { return }
+                }
                 let diff = RecipePlanRecomputeDiff.compare(saved: savedRevision, computed: plan)
-                if diff.hasChanges {
+                let sameInputs = savedRevision.quantity == plan.quantity
+                    && savedRevision.selections == plan.selections
+                if packOrEngineStale || (sameInputs && diff.hasChanges) {
+                    self.quantity = savedRevision.quantity
+                    self.selections = savedRevision.selections
+                    progress = SavedRecipePlan.transferredProgress(
+                        from: progress,
+                        onto: savedRevision.checklist
+                    )
                     recomputePreview = plan
                     recomputeDiff = diff
-                    state = .loaded(planFromSavedSnapshot(savedRevision, live: plan))
+                    state = .loaded(.snapshot(from: savedRevision))
                     return
                 }
+                selections = plan.selections
                 progress = SavedRecipePlan.transferredProgress(from: progress, onto: plan.checklist)
+            } else {
+                selections = plan.selections
             }
+            recomputePreview = nil
+            recomputeDiff = nil
             state = .loaded(plan)
         } catch is CancellationError {
             return
@@ -94,12 +125,31 @@ final class RecipePlanModel {
         packIdentity: PackIdentity?,
         saved: SavedStore
     ) async {
+        guard !isFrozen else { return }
         selections[nodeID] = recipeID
         await load(type: type, id: id, catalog: catalog, packIdentity: packIdentity, saved: saved)
     }
 
-    func toggleProgress(lineID: String) {
+    func toggleProgress(
+        lineID: String,
+        clock: any Clock,
+        saved: SavedStore
+    ) async {
         progress[lineID] = !(progress[lineID] ?? false)
+        guard let savedRevision else { return }
+        do {
+            var record = savedRevision
+            record.progress = SavedRecipePlan.transferredProgress(
+                from: progress,
+                onto: record.checklist
+            )
+            record.updatedAt = clock.now()
+            try await saved.upsertRecipePlan(record)
+            self.savedRevision = record
+            lastError = nil
+        } catch {
+            lastError = error.localizedDescription
+        }
     }
 
     func save(
@@ -110,7 +160,7 @@ final class RecipePlanModel {
         guard case .loaded(let plan) = state else { return }
         do {
             let now = clock.now()
-            if let savedRevision, recomputeDiff?.hasChanges == true {
+            if let savedRevision, isFrozen {
                 var record = savedRevision
                 record.progress = SavedRecipePlan.transferredProgress(from: progress, onto: record.checklist)
                 record.updatedAt = now
@@ -162,6 +212,7 @@ final class RecipePlanModel {
             savedRevision = next
             progress = next.progress
             selections = next.selections
+            quantity = next.quantity
             didHydrateSavedPlan = true
             recomputePreview = nil
             recomputeDiff = nil
@@ -170,16 +221,5 @@ final class RecipePlanModel {
         } catch {
             lastError = error.localizedDescription
         }
-    }
-
-    private func planFromSavedSnapshot(_ saved: SavedRecipePlan, live: ComputedRecipePlan) -> ComputedRecipePlan {
-        var snapshot = live
-        snapshot.checklist = saved.checklist
-        snapshot.notices = saved.notices + ["Pack or recipe data changed. Confirm to create a new revision."]
-        snapshot.cycles = saved.cycles
-        snapshot.truncated = saved.truncated
-        snapshot.quantity = saved.quantity
-        snapshot.selections = saved.selections
-        return snapshot
     }
 }

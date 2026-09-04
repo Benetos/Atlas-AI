@@ -110,6 +110,9 @@ struct GroundedRenderer: Sendable {
            let quantity = fact.quantity,
            let record = derived.records.first,
            case .derived(let evidence) = record.payload {
+            if let summary = evidence.normalizedInputs["checklistSummary"], !summary.isEmpty {
+                return "\(evidence.engineName) calculated \(quantity) from the pinned Atlas snapshot. Gather \(summary)."
+            }
             return "\(evidence.engineName) calculated \(quantity) from the pinned Atlas snapshot."
         }
         if let entity = entities.first {
