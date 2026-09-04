@@ -11,7 +11,7 @@ struct LocalKnowledgeToolRegistry: Sendable {
     var database: LocalDatabaseToolRegistry
     var calculationToolNames: [String]
 
-    init(database: LocalDatabaseToolRegistry, calculationToolNames: [String] = ["scale_quantity"]) {
+    init(database: LocalDatabaseToolRegistry, calculationToolNames: [String] = ["scale_quantity", "plan_recipe"]) {
         self.database = database
         self.calculationToolNames = calculationToolNames
     }
@@ -21,10 +21,14 @@ struct LocalKnowledgeToolRegistry: Sendable {
     }
 
     func invoke(_ call: LocalToolCall) async throws -> LocalToolOutput {
-        if calculationToolNames.contains(call.name) {
+        switch call.name {
+        case "scale_quantity":
             return scaleQuantity(call)
+        case "plan_recipe":
+            return try await planRecipe(call)
+        default:
+            return try await database.invoke(call)
         }
-        return try await database.invoke(call)
     }
 
     func scaleQuantity(
@@ -84,5 +88,53 @@ struct LocalKnowledgeToolRegistry: Sendable {
                 notice: error.localizedDescription
             )
         }
+    }
+
+    private func planRecipe(_ call: LocalToolCall) async throws -> LocalToolOutput {
+        guard let type = call.entityType, let id = call.gameID, !type.isEmpty, !id.isEmpty else {
+            return rejected(name: call.name, message: "Missing entity identity")
+        }
+        let rawQuantity = call.quantity.map(String.init) ?? call.query ?? "1"
+        do {
+            try Task.checkCancellation()
+            let quantity = try Quantity.parse(rawQuantity)
+            let plan = try await RecipeGraphEngine().plan(
+                targetType: type,
+                targetID: id,
+                quantity: quantity,
+                packReleaseID: database.packIdentity.sourceCommitSHA,
+                source: database.catalog.asRecipeGraphSource()
+            )
+            try Task.checkCancellation()
+            let issued = database.ledger.issue(payload: .derived(plan.derivedEvidence), source: .calculated)
+            let summary = plan.checklist
+                .map { "\($0.quantity)× \($0.title)" }
+                .joined(separator: "; ")
+            return LocalToolOutput(
+                name: call.name,
+                status: .ok,
+                evidenceIDs: [issued.evidenceID],
+                packReleaseID: database.packIdentity.sourceCommitSHA,
+                sourceSHA: database.packIdentity.sourceCommitSHA,
+                payload: .message(summary.isEmpty ? String(quantity) : summary),
+                notice: plan.derivedEvidence.provenanceLabel
+            )
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return rejected(name: call.name, message: error.localizedDescription)
+        }
+    }
+
+    private func rejected(name: String, message: String) -> LocalToolOutput {
+        LocalToolOutput(
+            name: name,
+            status: .rejected,
+            evidenceIDs: [],
+            packReleaseID: database.packIdentity.sourceCommitSHA,
+            sourceSHA: database.packIdentity.sourceCommitSHA,
+            payload: .message(message),
+            notice: message
+        )
     }
 }

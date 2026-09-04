@@ -46,6 +46,7 @@ enum AppDestination: Hashable, Codable, Sendable {
     case recipe(id: String)
     case content(dataset: String, id: String, sourceOrdinal: Int)
     case savedArtifact(id: String)
+    case recipePlan(type: String, id: String, quantity: Int, artifactID: String? = nil)
     case unavailable(UnavailableDestination)
 
     private static let currentSchemaVersion = 1
@@ -58,6 +59,7 @@ enum AppDestination: Hashable, Codable, Sendable {
         case dataset
         case sourceOrdinal
         case artifactID
+        case quantity
         case unavailable
     }
 
@@ -66,6 +68,7 @@ enum AppDestination: Hashable, Codable, Sendable {
         case recipe
         case content
         case savedArtifact
+        case recipePlan
         case unavailable
     }
 
@@ -88,6 +91,12 @@ enum AppDestination: Hashable, Codable, Sendable {
         case .savedArtifact(let id):
             try container.encode(Kind.savedArtifact, forKey: .kind)
             try container.encode(id, forKey: .artifactID)
+        case .recipePlan(let type, let id, let quantity, let artifactID):
+            try container.encode(Kind.recipePlan, forKey: .kind)
+            try container.encode(type, forKey: .entityType)
+            try container.encode(id, forKey: .id)
+            try container.encode(quantity, forKey: .quantity)
+            try container.encodeIfPresent(artifactID, forKey: .artifactID)
         case .unavailable(let destination):
             try container.encode(Kind.unavailable, forKey: .kind)
             try container.encode(destination, forKey: .unavailable)
@@ -125,6 +134,13 @@ enum AppDestination: Hashable, Codable, Sendable {
             )
         case .savedArtifact:
             self = .savedArtifact(id: try container.decode(String.self, forKey: .artifactID))
+        case .recipePlan:
+            self = .recipePlan(
+                type: try container.decode(String.self, forKey: .entityType),
+                id: try container.decode(String.self, forKey: .id),
+                quantity: try container.decode(Int.self, forKey: .quantity),
+                artifactID: try container.decodeIfPresent(String.self, forKey: .artifactID)
+            )
         case .unavailable:
             self = .unavailable(try container.decode(UnavailableDestination.self, forKey: .unavailable))
         }

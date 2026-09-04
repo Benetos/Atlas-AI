@@ -2,6 +2,7 @@ import Foundation
 
 enum SavedArtifactKind: String, Sendable {
     case bookmark
+    case recipePlan
 }
 
 enum BookmarkTarget: Hashable, Sendable {
@@ -170,6 +171,12 @@ struct SavedArtifactRecord: Equatable, Sendable {
         }
     }
 
+    func recipePlan() -> SavedRecipePlan? {
+        guard kind == SavedArtifactKind.recipePlan.rawValue else { return nil }
+        guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
+        return try? SavedRecipePlan.decoder.decode(SavedRecipePlan.self, from: data)
+    }
+
     static func bookmark(
         from item: SavedItem,
         existing: SavedArtifactRecord?,
@@ -193,10 +200,30 @@ struct SavedArtifactRecord: Equatable, Sendable {
             payload: payload
         )
     }
+
+    static func recipePlan(
+        from plan: SavedRecipePlan,
+        existing: SavedArtifactRecord?,
+        now: Date
+    ) -> SavedArtifactRecord {
+        let data = (try? SavedRecipePlan.encoder.encode(plan)) ?? Data("{}".utf8)
+        let payload = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        return SavedArtifactRecord(
+            id: plan.id,
+            kind: SavedArtifactKind.recipePlan.rawValue,
+            payloadVersion: 1,
+            createdAt: existing?.createdAt ?? plan.createdAt,
+            updatedAt: now,
+            originatingPackReleaseID: plan.packReleaseID,
+            originatingCapabilities: existing?.originatingCapabilities ?? ["recipe-planner"],
+            payload: payload
+        )
+    }
 }
 
 struct SavedArtifactsSnapshot: Equatable, Sendable {
     var bookmarks: [SavedItem]
     var recents: [SavedItem]
+    var recipePlans: [SavedRecipePlan]
     var records: [SavedArtifactRecord]
 }

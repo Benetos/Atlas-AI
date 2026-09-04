@@ -148,6 +148,8 @@ struct GroundedRenderer: Sendable {
             return "uses:\(type):\(id)"
         case .recipesFor(let type, let id):
             return "recipes:\(type):\(id)"
+        case .plan(let type, let id, let quantity):
+            return "plan:\(type):\(id):\(quantity)"
         }
     }
 

@@ -21,6 +21,7 @@ struct AtlasView: View {
     @Environment(AtlasRouter.self) private var router
 
     private let chips = [
+        "I need 12 Circuit Boards",
         "How do I cook food?",
         "What is Ferrite Dust for?",
         "Circuit Board recipe",
@@ -358,6 +359,11 @@ struct AtlasView: View {
             Task { await send("What is \(id) used in?") }
         case .recipesFor(_, let id):
             Task { await send("\(id) recipe") }
+        case .plan(let type, let id, let quantity):
+            router.select(
+                .recipePlan(type: type, id: id, quantity: quantity),
+                in: .atlas
+            )
         }
     }
 
@@ -398,6 +404,11 @@ struct AtlasView: View {
         switch resolved.action {
         case .open(let destination), .filter(let destination):
             router.select(destination, in: .atlas)
+        case .plan(let type, let id, let quantity):
+            router.select(
+                .recipePlan(type: type, id: id, quantity: quantity),
+                in: .atlas
+            )
         case .save(let key):
             guard let catalog = model.catalog else { return }
             switch key {
@@ -412,7 +423,7 @@ struct AtlasView: View {
             default:
                 break
             }
-        case .requestExternalSource, .compare, .plan, .guide, .configure, .export:
+        case .requestExternalSource, .compare, .guide, .configure, .export:
             break
         }
     }

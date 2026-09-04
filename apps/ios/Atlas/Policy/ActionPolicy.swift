@@ -8,6 +8,13 @@ struct GeneratedActionProposal: Equatable, Sendable, Hashable {
         GeneratedActionProposal(kind: "open", payload: Self.payload(for: key))
     }
 
+    static func plan(type: String, id: String, quantity: Int) -> GeneratedActionProposal {
+        GeneratedActionProposal(
+            kind: "plan",
+            payload: ["record": "entity", "type": type, "id": id, "quantity": String(quantity)]
+        )
+    }
+
     static func save(_ key: RecordKey) -> GeneratedActionProposal {
         GeneratedActionProposal(kind: "save", payload: Self.payload(for: key))
     }
@@ -42,7 +49,7 @@ enum AtlasAction: Equatable, Sendable, Hashable {
     case open(AppDestination)
     case filter(AppDestination)
     case compare(keys: [RecordKey])
-    case plan(recipeID: String, quantity: Int)
+    case plan(type: String, id: String, quantity: Int)
     case guide(id: String)
     case configure(kind: String)
     case save(RecordKey)
@@ -51,18 +58,18 @@ enum AtlasAction: Equatable, Sendable, Hashable {
 
     var requiresConfirmation: Bool {
         switch self {
-        case .open, .filter:
+        case .open, .filter, .plan:
             return false
-        case .compare, .plan, .guide, .configure, .save, .export, .requestExternalSource:
+        case .compare, .guide, .configure, .save, .export, .requestExternalSource:
             return true
         }
     }
 
     var isWrite: Bool {
         switch self {
-        case .save, .export, .plan, .configure, .guide:
+        case .save, .export, .configure, .guide:
             return true
-        case .open, .filter, .compare, .requestExternalSource:
+        case .open, .filter, .compare, .plan, .requestExternalSource:
             return false
         }
     }
@@ -149,14 +156,30 @@ struct ActionResolver: Sendable {
             return make(.compare(keys: keys), keys: keys, ledger: ledger, packReleaseID: packReleaseID)
 
         case "plan":
+            let quantity = try Quantity.parse(proposal.payload["quantity"] ?? "1")
+            if let type = proposal.payload["type"], let id = proposal.payload["id"], !type.isEmpty, !id.isEmpty {
+                let key = RecordKey.entity(type: type, id: id)
+                try ensureKnown(key, ledger: ledger)
+                return make(
+                    .plan(type: type, id: id, quantity: quantity),
+                    keys: [key],
+                    ledger: ledger,
+                    packReleaseID: packReleaseID
+                )
+            }
             guard let recipeID = proposal.payload["recipeID"], !recipeID.isEmpty else {
                 throw ActionResolutionError.missingIdentifier
             }
-            let quantity = try Quantity.parse(proposal.payload["quantity"] ?? "1")
             let key = RecordKey.recipe(id: recipeID)
             try ensureKnown(key, ledger: ledger)
+            let bundle = ledger.bundle(turnID: "lookup")
+            guard let record = bundle.records.first(where: { $0.recordKey == key }),
+                  case .recipe(let recipe) = record.payload
+            else {
+                throw ActionResolutionError.unknownRecord
+            }
             return make(
-                .plan(recipeID: recipeID, quantity: quantity),
+                .plan(type: recipe.outputEntityType, id: recipe.outputGameID, quantity: quantity),
                 keys: [key],
                 ledger: ledger,
                 packReleaseID: packReleaseID
@@ -308,8 +331,8 @@ struct PendingAction: Equatable, Sendable, Hashable, Identifiable {
             return "Filter \(Self.label(destination))"
         case .compare(let keys):
             return "Compare \(keys.map(\.canonical).joined(separator: ", "))"
-        case .plan(let recipeID, let quantity):
-            return "Plan \(quantity)× \(recipeID)"
+        case .plan(let type, let id, let quantity):
+            return "Plan \(quantity)× \(type) \(id)"
         case .guide(let id):
             return "Open guide \(id)"
         case .configure(let kind):
@@ -333,6 +356,8 @@ struct PendingAction: Equatable, Sendable, Hashable, Identifiable {
             return "\(dataset) \(id)"
         case .savedArtifact(let id):
             return id
+        case .recipePlan(let type, let id, let quantity, _):
+            return "\(quantity)× \(type) \(id)"
         case .unavailable(let unavailable):
             return unavailable.title
         }

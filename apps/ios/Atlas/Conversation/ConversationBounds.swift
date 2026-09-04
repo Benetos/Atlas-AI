@@ -118,7 +118,7 @@ enum Quantity: Sendable {
     }
 }
 
-struct RecipeExpansionBounds: Equatable, Sendable {
+struct RecipeExpansionBounds: Equatable, Sendable, Hashable, Codable {
     var depth: Int
     var alternativesPerNode: Int
     var maxVisitedNodes: Int

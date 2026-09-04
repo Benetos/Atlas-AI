@@ -39,6 +39,24 @@ actor SavedArtifactsStore {
         return try snapshot()
     }
 
+    func upsertRecipePlan(_ plan: SavedRecipePlan) throws -> SavedArtifactsSnapshot {
+        var document = try loadDocument()
+        let now = clock.now()
+        let existing = document.records.first { $0.id == plan.id }
+        let record = SavedArtifactRecord.recipePlan(from: plan, existing: existing, now: now)
+        document.records.removeAll { $0.id == plan.id }
+        document.records.insert(record, at: 0)
+        try persist(document)
+        return try snapshot()
+    }
+
+    func removeRecipePlan(id: String) throws -> SavedArtifactsSnapshot {
+        var document = try loadDocument()
+        document.records.removeAll { $0.id == id && $0.kind == SavedArtifactKind.recipePlan.rawValue }
+        try persist(document)
+        return try snapshot()
+    }
+
     func rememberRecent(_ item: SavedItem) throws -> SavedArtifactsSnapshot {
         var document = try loadDocument()
         let now = clock.now()
@@ -129,6 +147,7 @@ actor SavedArtifactsStore {
         SavedArtifactsSnapshot(
             bookmarks: document.records.compactMap { $0.bookmark() },
             recents: document.recents.compactMap { $0.bookmark() },
+            recipePlans: document.records.compactMap { $0.recipePlan() },
             records: document.records
         )
     }

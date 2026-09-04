@@ -62,6 +62,21 @@ struct RecipeDetailView: View {
             }
             .toolbar {
                 Button {
+                    let quantity = (try? Quantity.parse(content.recipe.outputAmount ?? "1")) ?? 1
+                    router.open(
+                        .recipePlan(
+                            type: content.recipe.outputEntityType,
+                            id: content.recipe.outputGameID,
+                            quantity: quantity
+                        ),
+                        in: router.selectedSection
+                    )
+                } label: {
+                    Image(systemName: "list.bullet.clipboard")
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .accessibilityLabel("Open plan for output")
+                Button {
                     Task { await model.saved.toggle(model.bookmark(for: content.recipe)) }
                 } label: {
                     Image(

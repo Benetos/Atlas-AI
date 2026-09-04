@@ -85,6 +85,20 @@ struct EntityDetailView: View {
             .toolbar {
                 if case .loaded(let content) = feature.state {
                     Button {
+                        router.open(
+                            .recipePlan(
+                                type: content.entity.entityType,
+                                id: content.entity.gameID,
+                                quantity: 1
+                            ),
+                            in: router.selectedSection
+                        )
+                    } label: {
+                        Image(systemName: "list.bullet.clipboard")
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .accessibilityLabel("Open plan")
+                    Button {
                         Task { await model.saved.toggle(model.bookmark(for: content.entity)) }
                     } label: {
                         Image(

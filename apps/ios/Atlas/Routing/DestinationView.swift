@@ -18,6 +18,13 @@ struct DestinationView: View {
             ContentDetailView(dataset: dataset, externalID: id, sourceOrdinal: sourceOrdinal)
         case .savedArtifact(let id):
             SavedArtifactDestinationView(artifactID: id)
+        case .recipePlan(let type, let id, let quantity, let artifactID):
+            RecipePlanView(
+                targetType: type,
+                targetID: id,
+                quantity: quantity,
+                artifactID: artifactID
+            )
         case .unavailable(let unavailable):
             UnavailableDestinationView(destination: unavailable)
         }
@@ -103,6 +110,13 @@ private struct SavedArtifactDestinationView: View {
             ?? model.saved.recents.first(where: { $0.id == artifactID })
         {
             DestinationView(destination: item.destination, canDeleteReference: true)
+        } else if let plan = model.saved.recipePlan(id: artifactID) {
+            RecipePlanView(
+                targetType: plan.targetType,
+                targetID: plan.targetID,
+                quantity: plan.quantity,
+                artifactID: plan.id
+            )
         } else {
             UnavailableDestinationView(
                 destination: UnavailableDestination(

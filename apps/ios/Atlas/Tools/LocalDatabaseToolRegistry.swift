@@ -45,6 +45,7 @@ struct LocalToolCall: Equatable, Sendable {
     var dataset: String? = nil
     var sourceOrdinal: Int? = nil
     var limit: Int? = nil
+    var quantity: Int? = nil
 }
 
 struct LocalToolOutput: Equatable, Sendable {

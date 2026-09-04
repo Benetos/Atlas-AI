@@ -41,6 +41,7 @@ enum FollowUpIntent: Equatable, Sendable, Hashable {
     case open(RecordKey)
     case usesFor(type: String, id: String)
     case recipesFor(type: String, id: String)
+    case plan(type: String, id: String, quantity: Int)
 
     var chipLabel: String {
         switch self {
@@ -54,6 +55,8 @@ enum FollowUpIntent: Equatable, Sendable, Hashable {
             return "What is it used in?"
         case .recipesFor:
             return "How do I make it?"
+        case .plan(let _, let _, let quantity):
+            return quantity == 1 ? "Open plan" : "Open \(quantity)× plan"
         }
     }
 }
@@ -189,10 +192,10 @@ struct DeterministicTurnPlanner: ProposedTurnPlanning {
         bundle: EvidenceBundle,
         ledger: EvidenceLedger
     ) async -> ProposedTurnPlan {
-        DeterministicTurnPlanner.plan(queryPlan: queryPlan, bundle: bundle)
+        DeterministicTurnPlanner.plan(prompt: prompt, queryPlan: queryPlan, bundle: bundle)
     }
 
-    static func plan(queryPlan: AtlasQueryPlan, bundle: EvidenceBundle) -> ProposedTurnPlan {
+    static func plan(prompt: String, queryPlan: AtlasQueryPlan, bundle: EvidenceBundle) -> ProposedTurnPlan {
         let entities = bundle.records.filter { if case .entity = $0.payload { return true }; return false }
         let recipes = bundle.records.filter { if case .recipe = $0.payload { return true }; return false }
         let derived = bundle.records.filter { $0.isCalculated }
@@ -274,9 +277,22 @@ struct DeterministicTurnPlanner: ProposedTurnPlanning {
             actions.append(.save(entityRecord.recordKey))
             followUps.append(.usesFor(type: entity.entityType, id: entity.gameID))
             followUps.append(.recipesFor(type: entity.entityType, id: entity.gameID))
-        } else if let recipeRecord = recipes.first {
+            let planQuantity = RecipePlanIntent.quantity(from: prompt) ?? 1
+            followUps.insert(
+                .plan(type: entity.entityType, id: entity.gameID, quantity: planQuantity),
+                at: RecipePlanIntent.quantity(from: prompt) == nil ? followUps.count : 0
+            )
+            actions.append(.plan(type: entity.entityType, id: entity.gameID, quantity: planQuantity))
+        } else if let recipeRecord = recipes.first, case .recipe(let recipe) = recipeRecord.payload {
             claims.append(contentsOf: recipeClaims(kind: .recipeRelated, recipes: recipes))
             actions.append(.open(recipeRecord.recordKey))
+            let planQuantity = RecipePlanIntent.quantity(from: prompt) ?? 1
+            followUps.append(
+                .plan(type: recipe.outputEntityType, id: recipe.outputGameID, quantity: planQuantity)
+            )
+            actions.append(
+                .plan(type: recipe.outputEntityType, id: recipe.outputGameID, quantity: planQuantity)
+            )
         }
 
         for record in derived {

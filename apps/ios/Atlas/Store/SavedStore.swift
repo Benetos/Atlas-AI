@@ -7,6 +7,7 @@ final class SavedStore {
     private let defaults: UserDefaults
     private(set) var items: [SavedItem] = []
     private(set) var recents: [SavedItem] = []
+    private(set) var recipePlans: [SavedRecipePlan] = []
     var lastError: String?
 
     init(artifacts: SavedArtifactsStore, defaults: UserDefaults) {
@@ -75,5 +76,27 @@ final class SavedStore {
         guard let snapshot else { return }
         items = snapshot.bookmarks
         recents = snapshot.recents
+        recipePlans = snapshot.recipePlans
+    }
+
+    func recipePlan(id: String) -> SavedRecipePlan? {
+        recipePlans.first { $0.id == id }
+    }
+
+    func upsertRecipePlan(_ plan: SavedRecipePlan) async throws {
+        apply(try await artifacts.upsertRecipePlan(plan))
+        lastError = nil
+    }
+
+    func removeRecipePlans(at offsets: IndexSet) async {
+        let ids = offsets.compactMap { recipePlans.indices.contains($0) ? recipePlans[$0].id : nil }
+        for id in ids {
+            do {
+                apply(try await artifacts.removeRecipePlan(id: id))
+                lastError = nil
+            } catch {
+                lastError = error.localizedDescription
+            }
+        }
     }
 }

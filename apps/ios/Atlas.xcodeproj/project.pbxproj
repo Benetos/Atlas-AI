@@ -59,6 +59,11 @@
 		C91FDAAEC6E74C44BF9ECBFA /* LocalDatabaseToolRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 605493340B54621F4AB53EC5 /* LocalDatabaseToolRegistry.swift */; };
 		1C20FEACA44BFE59BEC7DD90 /* LocalKnowledgeToolRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E8C19E2A3E9685FB25D1975 /* LocalKnowledgeToolRegistry.swift */; };
 		D5F170F764B3752B5C5A52D5 /* Phase1BFoundationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 762AFB8CAED3123194ED369D /* Phase1BFoundationTests.swift */; };
+		014A428E513DA4C0729FB346 /* RecipeGraphEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A41F8C2E9B7D4E6A1C3F5D80 /* RecipeGraphEngine.swift */; };
+		125B539F624EB5D183A0C457 /* RecipePlanModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52E9D3F0C8E5F7B2D4A6E91 /* RecipePlanModels.swift */; };
+		236C64A0735FC6E294B1D568 /* RecipePlanModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C63F0E4A1D9F608C3E5B7F02 /* RecipePlanModel.swift */; };
+		347D75B18470D7F3A5C2E679 /* RecipePlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7401F5B2E0A719D4F6C8013 /* RecipePlanView.swift */; };
+		458E86C29581E804B6D3F78A /* RecipeGraphEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E851206C3F1B82AE507D9124 /* RecipeGraphEngineTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -154,6 +159,11 @@
 		605493340B54621F4AB53EC5 /* LocalDatabaseToolRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalDatabaseToolRegistry.swift; sourceTree = "<group>"; };
 		8E8C19E2A3E9685FB25D1975 /* LocalKnowledgeToolRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalKnowledgeToolRegistry.swift; sourceTree = "<group>"; };
 		762AFB8CAED3123194ED369D /* Phase1BFoundationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase1BFoundationTests.swift; sourceTree = "<group>"; };
+		A41F8C2E9B7D4E6A1C3F5D80 /* RecipeGraphEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeGraphEngine.swift; sourceTree = "<group>"; };
+		B52E9D3F0C8E5F7B2D4A6E91 /* RecipePlanModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipePlanModels.swift; sourceTree = "<group>"; };
+		C63F0E4A1D9F608C3E5B7F02 /* RecipePlanModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipePlanModel.swift; sourceTree = "<group>"; };
+		D7401F5B2E0A719D4F6C8013 /* RecipePlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipePlanView.swift; sourceTree = "<group>"; };
+		E851206C3F1B82AE507D9124 /* RecipeGraphEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeGraphEngineTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -186,6 +196,7 @@
 			children = (
 				8C674E506E8E7383CED5D473 /* Phase1AFoundationTests.swift */,
 				762AFB8CAED3123194ED369D /* Phase1BFoundationTests.swift */,
+				E851206C3F1B82AE507D9124 /* RecipeGraphEngineTests.swift */,
 				90264F659BF01F6AB890BCAF /* AtlasTests.swift */,
 				67828BA08DAEC116C2662ABE /* Fixtures */,
 			);
@@ -204,6 +215,7 @@
 				C63324E27403782003C8AAC8 /* InfoView.swift */,
 				FDAAC84C9EBDDBC3BA3DF533 /* LibraryView.swift */,
 				D149A922C4CF4E1037C57E5A /* RecipeDetailView.swift */,
+				D7401F5B2E0A719D4F6C8013 /* RecipePlanView.swift */,
 				38E7F5DC787F849570FF40C4 /* SavedView.swift */,
 			);
 			path = Views;
@@ -221,6 +233,7 @@
 				063A352AFEFE1EB3640684F9 /* Evidence */,
 				E90A692ED240E47ACC67D7DA /* Conversation */,
 				5497B67A0913359EF9E0D8A8 /* Tools */,
+				F962317D402C93BF618EA235 /* Planner */,
 				8657742E7740E48C9F7036AB /* AppModel.swift */,
 				435A7DB01D1036537F3BB63F /* Assets.xcassets */,
 				F0DCC0F8696FAAED6BDD4D2F /* Atlas.entitlements */,
@@ -350,6 +363,7 @@
 			isa = PBXGroup;
 			children = (
 				A577E4F56338B62ADBBCBE82 /* FeatureModels.swift */,
+				C63F0E4A1D9F608C3E5B7F02 /* RecipePlanModel.swift */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -416,6 +430,15 @@
 				8E8C19E2A3E9685FB25D1975 /* LocalKnowledgeToolRegistry.swift */,
 			);
 			path = Tools;
+			sourceTree = "<group>";
+		};
+		F962317D402C93BF618EA235 /* Planner */ = {
+			isa = PBXGroup;
+			children = (
+				A41F8C2E9B7D4E6A1C3F5D80 /* RecipeGraphEngine.swift */,
+				B52E9D3F0C8E5F7B2D4A6E91 /* RecipePlanModels.swift */,
+			);
+			path = Planner;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -573,6 +596,10 @@
 				FC3035318E97B482F94A57AC /* AtlasConversationEngine.swift in Sources */,
 				C91FDAAEC6E74C44BF9ECBFA /* LocalDatabaseToolRegistry.swift in Sources */,
 				1C20FEACA44BFE59BEC7DD90 /* LocalKnowledgeToolRegistry.swift in Sources */,
+				014A428E513DA4C0729FB346 /* RecipeGraphEngine.swift in Sources */,
+				125B539F624EB5D183A0C457 /* RecipePlanModels.swift in Sources */,
+				236C64A0735FC6E294B1D568 /* RecipePlanModel.swift in Sources */,
+				347D75B18470D7F3A5C2E679 /* RecipePlanView.swift in Sources */,
 				187F3D9BF85B5ACF12293935 /* AppModel.swift in Sources */,
 				2F8EC602ED13B3C08636A2DD /* AppSettings.swift in Sources */,
 				8A61946037B3DB00BDDD37F1 /* AtlasApp.swift in Sources */,
@@ -603,6 +630,7 @@
 			files = (
 				86BB24B13B26B9CE133F430D /* Phase1AFoundationTests.swift in Sources */,
 				D5F170F764B3752B5C5A52D5 /* Phase1BFoundationTests.swift in Sources */,
+				458E86C29581E804B6D3F78A /* RecipeGraphEngineTests.swift in Sources */,
 				CD0476434D4B6F1578C6E90F /* AtlasTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

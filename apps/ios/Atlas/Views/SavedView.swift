@@ -11,6 +11,39 @@ struct SavedView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            Section("Plans") {
+                if model.saved.recipePlans.isEmpty {
+                    Text("Save a recipe plan from Atlas or an item detail screen.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(model.saved.recipePlans) { plan in
+                        AtlasOpenLink(
+                            destination: plan.destination,
+                            section: .saved,
+                            replacesPath: true
+                        ) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(plan.title)
+                                Text("Revision \(plan.revision) · \(plan.checkedCount)/\(plan.checklist.count) gathered")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                if !plan.packReleaseID.isEmpty {
+                                    SourceBadge(
+                                        presentation: SourcePresentation(
+                                            kind: .calculated,
+                                            releaseLabel: String(plan.packReleaseID.prefix(12))
+                                        ),
+                                        expanded: true
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    .onDelete { offsets in
+                        Task { await model.saved.removeRecipePlans(at: offsets) }
+                    }
+                }
+            }
             Section("Bookmarks") {
                 if model.saved.items.isEmpty {
                     Text("Bookmark items and recipes from their detail screens.")

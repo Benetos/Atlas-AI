@@ -149,7 +149,11 @@ actor AtlasConversationEngine {
                     ledger: ledger
                 )
             } else {
-                proposed = DeterministicTurnPlanner.plan(queryPlan: queryPlan, bundle: bundle)
+                proposed = DeterministicTurnPlanner.plan(
+                    prompt: request.prompt,
+                    queryPlan: queryPlan,
+                    bundle: bundle
+                )
                 usedFallback = request.modelAvailability != .available
             }
 
@@ -158,7 +162,11 @@ actor AtlasConversationEngine {
             do {
                 claims = try validator.validate(plan: proposed, ledger: ledger)
             } catch {
-                proposed = DeterministicTurnPlanner.plan(queryPlan: queryPlan, bundle: bundle)
+                proposed = DeterministicTurnPlanner.plan(
+                    prompt: request.prompt,
+                    queryPlan: queryPlan,
+                    bundle: bundle
+                )
                 claims = (try? validator.validate(plan: proposed, ledger: ledger)) ?? []
                 usedFallback = true
                 notices.append("Invalid model plan. Showing the grounded local answer.")
@@ -360,6 +368,18 @@ actor AtlasConversationEngine {
             for recipe in recipes {
                 _ = tools.database.ledger.issue(payload: .recipe(recipe), source: .packed)
             }
+        }
+
+        if let quantity = RecipePlanIntent.quantity(from: plan.originalPrompt),
+           let first = entities.first {
+            _ = try await tools.invoke(
+                LocalToolCall(
+                    name: "plan_recipe",
+                    entityType: first.entityType,
+                    gameID: first.gameID,
+                    quantity: quantity
+                )
+            )
         }
 
         var content: [ContentRecord] = []
