@@ -49,7 +49,16 @@
 		14901EE4A96A63C4A5DC9119 /* SavedArtifactsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 253A149DBA8A2E37CFDF9929 /* SavedArtifactsStore.swift */; };
 		85D543280AD6DD26A572F77D /* AppShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA6C334BAC98B496D8B2757 /* AppShellView.swift */; };
 		02D1CC8E330C1A07FCDCDC07 /* LoadableStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E6987AC2D9BDBEF76DD769F /* LoadableStateView.swift */; };
-		86BB24B13B26B9CE133F430D /* Phase1AFoundationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C674E506E8E7383CED5D473 /* Phase1AFoundationTests.swift */; };
+		1A012B723896641ACDDBDE3C /* SourcePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87BCBBF60E7D91ED4A767D91 /* SourcePolicy.swift */; };
+		1E51066E0D3E8E7A56F58DDD /* ActionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48CC872A6C805E30B299BA0E /* ActionPolicy.swift */; };
+		10DDDA0EBB7046D265E5A3C0 /* EvidenceLedger.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8887080E98D5DDF8E246A3D /* EvidenceLedger.swift */; };
+		5C97C212405E817C324BF126 /* Claims.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D5C9691E080C499CA1C915D /* Claims.swift */; };
+		3300A39D83B4DA6FCE93B4BD /* ConversationBounds.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97859641C55FC7E7199D9049 /* ConversationBounds.swift */; };
+		34EA3A4CCF9D9D46CCFBC90D /* GroundedRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44563B7619A2DB0E09DC95E9 /* GroundedRenderer.swift */; };
+		FC3035318E97B482F94A57AC /* AtlasConversationEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13C7151A71CF8AD5AFFC3D81 /* AtlasConversationEngine.swift */; };
+		C91FDAAEC6E74C44BF9ECBFA /* LocalDatabaseToolRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 605493340B54621F4AB53EC5 /* LocalDatabaseToolRegistry.swift */; };
+		1C20FEACA44BFE59BEC7DD90 /* LocalKnowledgeToolRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E8C19E2A3E9685FB25D1975 /* LocalKnowledgeToolRegistry.swift */; };
+		D5F170F764B3752B5C5A52D5 /* Phase1BFoundationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 762AFB8CAED3123194ED369D /* Phase1BFoundationTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -135,6 +144,16 @@
 		BFA6C334BAC98B496D8B2757 /* AppShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellView.swift; sourceTree = "<group>"; };
 		7E6987AC2D9BDBEF76DD769F /* LoadableStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadableStateView.swift; sourceTree = "<group>"; };
 		8C674E506E8E7383CED5D473 /* Phase1AFoundationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase1AFoundationTests.swift; sourceTree = "<group>"; };
+		87BCBBF60E7D91ED4A767D91 /* SourcePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcePolicy.swift; sourceTree = "<group>"; };
+		48CC872A6C805E30B299BA0E /* ActionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionPolicy.swift; sourceTree = "<group>"; };
+		C8887080E98D5DDF8E246A3D /* EvidenceLedger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvidenceLedger.swift; sourceTree = "<group>"; };
+		9D5C9691E080C499CA1C915D /* Claims.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Claims.swift; sourceTree = "<group>"; };
+		97859641C55FC7E7199D9049 /* ConversationBounds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationBounds.swift; sourceTree = "<group>"; };
+		44563B7619A2DB0E09DC95E9 /* GroundedRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroundedRenderer.swift; sourceTree = "<group>"; };
+		13C7151A71CF8AD5AFFC3D81 /* AtlasConversationEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtlasConversationEngine.swift; sourceTree = "<group>"; };
+		605493340B54621F4AB53EC5 /* LocalDatabaseToolRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalDatabaseToolRegistry.swift; sourceTree = "<group>"; };
+		8E8C19E2A3E9685FB25D1975 /* LocalKnowledgeToolRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalKnowledgeToolRegistry.swift; sourceTree = "<group>"; };
+		762AFB8CAED3123194ED369D /* Phase1BFoundationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase1BFoundationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -166,6 +185,7 @@
 			isa = PBXGroup;
 			children = (
 				8C674E506E8E7383CED5D473 /* Phase1AFoundationTests.swift */,
+				762AFB8CAED3123194ED369D /* Phase1BFoundationTests.swift */,
 				90264F659BF01F6AB890BCAF /* AtlasTests.swift */,
 				67828BA08DAEC116C2662ABE /* Fixtures */,
 			);
@@ -197,6 +217,10 @@
 				CFA9E75A1285CB7B5AEF0125 /* Presentation */,
 				3ABEFEF86CD2390160E76F87 /* Repositories */,
 				BBF3781C20590B8CF7F88B09 /* Routing */,
+				8AD154E3151E3FA427DBD501 /* Policy */,
+				063A352AFEFE1EB3640684F9 /* Evidence */,
+				E90A692ED240E47ACC67D7DA /* Conversation */,
+				5497B67A0913359EF9E0D8A8 /* Tools */,
 				8657742E7740E48C9F7036AB /* AppModel.swift */,
 				435A7DB01D1036537F3BB63F /* Assets.xcassets */,
 				F0DCC0F8696FAAED6BDD4D2F /* Atlas.entitlements */,
@@ -357,6 +381,43 @@
 			path = Routing;
 			sourceTree = "<group>";
 		};
+		8AD154E3151E3FA427DBD501 /* Policy */ = {
+			isa = PBXGroup;
+			children = (
+				87BCBBF60E7D91ED4A767D91 /* SourcePolicy.swift */,
+				48CC872A6C805E30B299BA0E /* ActionPolicy.swift */,
+			);
+			path = Policy;
+			sourceTree = "<group>";
+		};
+		063A352AFEFE1EB3640684F9 /* Evidence */ = {
+			isa = PBXGroup;
+			children = (
+				C8887080E98D5DDF8E246A3D /* EvidenceLedger.swift */,
+				9D5C9691E080C499CA1C915D /* Claims.swift */,
+			);
+			path = Evidence;
+			sourceTree = "<group>";
+		};
+		E90A692ED240E47ACC67D7DA /* Conversation */ = {
+			isa = PBXGroup;
+			children = (
+				97859641C55FC7E7199D9049 /* ConversationBounds.swift */,
+				44563B7619A2DB0E09DC95E9 /* GroundedRenderer.swift */,
+				13C7151A71CF8AD5AFFC3D81 /* AtlasConversationEngine.swift */,
+			);
+			path = Conversation;
+			sourceTree = "<group>";
+		};
+		5497B67A0913359EF9E0D8A8 /* Tools */ = {
+			isa = PBXGroup;
+			children = (
+				605493340B54621F4AB53EC5 /* LocalDatabaseToolRegistry.swift */,
+				8E8C19E2A3E9685FB25D1975 /* LocalKnowledgeToolRegistry.swift */,
+			);
+			path = Tools;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -503,6 +564,15 @@
 				14901EE4A96A63C4A5DC9119 /* SavedArtifactsStore.swift in Sources */,
 				85D543280AD6DD26A572F77D /* AppShellView.swift in Sources */,
 				02D1CC8E330C1A07FCDCDC07 /* LoadableStateView.swift in Sources */,
+				1A012B723896641ACDDBDE3C /* SourcePolicy.swift in Sources */,
+				1E51066E0D3E8E7A56F58DDD /* ActionPolicy.swift in Sources */,
+				10DDDA0EBB7046D265E5A3C0 /* EvidenceLedger.swift in Sources */,
+				5C97C212405E817C324BF126 /* Claims.swift in Sources */,
+				3300A39D83B4DA6FCE93B4BD /* ConversationBounds.swift in Sources */,
+				34EA3A4CCF9D9D46CCFBC90D /* GroundedRenderer.swift in Sources */,
+				FC3035318E97B482F94A57AC /* AtlasConversationEngine.swift in Sources */,
+				C91FDAAEC6E74C44BF9ECBFA /* LocalDatabaseToolRegistry.swift in Sources */,
+				1C20FEACA44BFE59BEC7DD90 /* LocalKnowledgeToolRegistry.swift in Sources */,
 				187F3D9BF85B5ACF12293935 /* AppModel.swift in Sources */,
 				2F8EC602ED13B3C08636A2DD /* AppSettings.swift in Sources */,
 				8A61946037B3DB00BDDD37F1 /* AtlasApp.swift in Sources */,
@@ -532,6 +602,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				86BB24B13B26B9CE133F430D /* Phase1AFoundationTests.swift in Sources */,
+				D5F170F764B3752B5C5A52D5 /* Phase1BFoundationTests.swift in Sources */,
 				CD0476434D4B6F1578C6E90F /* AtlasTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

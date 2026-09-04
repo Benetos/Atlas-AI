@@ -46,7 +46,7 @@ struct SourceBadge: View {
 
     private var badgeColor: Color {
         switch presentation.kind {
-        case .packed: .teal
+        case .packed, .calculated: .teal
         case .liveAtlas: .blue
         case .communityWeb: .orange
         }

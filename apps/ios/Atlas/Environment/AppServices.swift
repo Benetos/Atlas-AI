@@ -80,6 +80,8 @@ struct AppServices {
     var network: NetworkActivityRecorder
     var modelAvailability: any ModelAvailabilityProviding
     var planner: any ModelPlanning
+    var proposedPlanner: any ProposedTurnPlanning
+    var generativeFlags: GenerativeRoutingFlags
     var savedDirectory: URL
     var userDefaults: UserDefaults
     var catalog: (any NMSCatalog)?
@@ -96,6 +98,8 @@ struct AppServices {
             network: NetworkActivityRecorder(),
             modelAvailability: SystemModelAvailability(),
             planner: DeterministicModelPlanner(),
+            proposedPlanner: DeterministicTurnPlanner(),
+            generativeFlags: .disabled,
             savedDirectory: support.appendingPathComponent("SavedArtifacts", isDirectory: true),
             userDefaults: .standard,
             catalog: nil,
@@ -109,6 +113,8 @@ struct AppServices {
         clock: any Clock = SystemClock(),
         modelAvailability: FoundationModelAvailability = .unavailable,
         planner: (any ModelPlanning)? = nil,
+        proposedPlanner: (any ProposedTurnPlanning)? = nil,
+        generativeFlags: GenerativeRoutingFlags = .disabled,
         catalog: (any NMSCatalog)? = nil,
         packIdentity: PackIdentity? = nil
     ) -> AppServices {
@@ -118,6 +124,8 @@ struct AppServices {
             network: NetworkActivityRecorder(),
             modelAvailability: FixedModelAvailability(current: modelAvailability),
             planner: planner ?? DeterministicModelPlanner(),
+            proposedPlanner: proposedPlanner ?? DeterministicTurnPlanner(),
+            generativeFlags: generativeFlags,
             savedDirectory: root.appendingPathComponent("SavedArtifacts", isDirectory: true),
             userDefaults: defaults,
             catalog: catalog,

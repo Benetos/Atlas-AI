@@ -4,12 +4,14 @@ enum EvidenceSourceKind: String, Sendable, Hashable {
     case packed
     case liveAtlas
     case communityWeb
+    case calculated
 
     var title: String {
         switch self {
         case .packed: "Packed"
         case .liveAtlas: "Live Atlas"
         case .communityWeb: "Community / web"
+        case .calculated: "Calculated from pack"
         }
     }
 }
