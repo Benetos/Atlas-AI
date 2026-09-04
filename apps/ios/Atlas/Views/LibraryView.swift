@@ -91,33 +91,25 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            List {
-                if trimmedQuery.isEmpty {
-                    browseSection
-                } else {
-                    searchSection
-                }
-            }
-            .navigationTitle("Library")
-            .searchable(text: $query, prompt: "Items, recipes, expeditions, and more")
-            .navigationDestination(for: AtlasRoute.self) { route in
-                switch route {
-                case .entity(let type, let id):
-                    EntityDetailView(entityType: type, gameID: id)
-                case .recipe(let id):
-                    RecipeDetailView(recipeID: id)
-                case .content(let dataset, let id, let sourceOrdinal):
-                    ContentDetailView(dataset: dataset, externalID: id, sourceOrdinal: sourceOrdinal)
-                }
-            }
-            .task(id: browseTaskID) {
-                await loadBrowse(reset: true)
-            }
-            .task(id: searchTaskID) {
-                await searchAfterDebounce()
+        List {
+            if trimmedQuery.isEmpty {
+                browseSection
+            } else {
+                searchSection
             }
         }
+        .navigationTitle("Library")
+        .searchable(text: $query, prompt: "Items, recipes, expeditions, and more")
+        .task(id: browseTaskID) {
+            await loadBrowse(reset: true)
+        }
+        .task(id: searchTaskID) {
+            await searchAfterDebounce()
+        }
+    }
+
+    private var packedProvenance: SourcePresentation {
+        .packed(model.packIdentity)
     }
 
     @ViewBuilder
@@ -215,22 +207,26 @@ struct LibraryView: View {
     private func resultRow(_ card: AtlasCard) -> some View {
         switch card {
         case .entity(let entity):
-            NavigationLink(value: AtlasRoute.entity(type: entity.entityType, id: entity.gameID)) {
-                EntityCardView(entity: entity)
+            AtlasOpenLink(
+                destination: .entity(type: entity.entityType, id: entity.gameID),
+                section: .library
+            ) {
+                EntityCardView(entity: entity, provenance: packedProvenance)
             }
         case .recipe(let recipe):
-            NavigationLink(value: AtlasRoute.recipe(id: recipe.recipeID)) {
-                RecipeCardView(recipe: recipe)
+            AtlasOpenLink(destination: .recipe(id: recipe.recipeID), section: .library) {
+                RecipeCardView(recipe: recipe, provenance: packedProvenance)
             }
         case .content(let record):
-            NavigationLink(
-                value: AtlasRoute.content(
+            AtlasOpenLink(
+                destination: .content(
                     dataset: record.dataset,
                     id: record.externalID,
                     sourceOrdinal: record.sourceOrdinal
-                )
+                ),
+                section: .library
             ) {
-                ContentCardView(record: record)
+                ContentCardView(record: record, provenance: packedProvenance)
             }
         case .web(let hit):
             Link(destination: hit.url) { WebCardView(hit: hit) }
@@ -242,7 +238,7 @@ struct LibraryView: View {
     }
 
     private var searchTaskID: String {
-        "\(searchScope.rawValue):\(trimmedQuery):\(model.pack?.generatedAt ?? "no-pack")"
+        "\(searchScope.rawValue):\(trimmedQuery):\(model.generationID):\(model.pack?.generatedAt ?? "no-pack")"
     }
 
     @MainActor
@@ -258,7 +254,7 @@ struct LibraryView: View {
         do {
             try await Task.sleep(for: .milliseconds(250))
             try Task.checkCancellation()
-            try runSearch()
+            try await runSearch()
         } catch is CancellationError {
             return
         } catch {
@@ -269,17 +265,19 @@ struct LibraryView: View {
     }
 
     @MainActor
-    private func runSearch() throws {
-        guard let store = model.store else { return }
+    private func runSearch() async throws {
+        guard let catalog = model.catalog else {
+            throw CatalogError.unavailable
+        }
         var cards: [AtlasCard] = []
         if searchScope == .all || searchScope == .items {
-            cards.append(contentsOf: try store.searchEntities(query: trimmedQuery, type: nil, limit: 30).map(AtlasCard.entity))
+            cards.append(contentsOf: try await catalog.searchEntities(query: trimmedQuery, type: nil, limit: 30).map(AtlasCard.entity))
         }
         if searchScope == .all || searchScope == .recipes {
-            cards.append(contentsOf: try store.searchRecipes(query: trimmedQuery, kind: nil, limit: 30).map(AtlasCard.recipe))
+            cards.append(contentsOf: try await catalog.searchRecipes(query: trimmedQuery, kind: nil, limit: 30).map(AtlasCard.recipe))
         }
         if searchScope == .all || searchScope == .categories {
-            cards.append(contentsOf: try store.searchContent(query: trimmedQuery, dataset: nil, limit: 20).map(AtlasCard.content))
+            cards.append(contentsOf: try await catalog.searchContent(query: trimmedQuery, dataset: nil, limit: 20).map(AtlasCard.content))
         }
         var seen: Set<String> = []
         results = cards.filter { seen.insert($0.id).inserted }
@@ -288,7 +286,7 @@ struct LibraryView: View {
 
     @MainActor
     private func loadBrowse(reset: Bool) async {
-        guard !isLoadingBrowse, let store = model.store else { return }
+        guard !isLoadingBrowse, let catalog = model.catalog else { return }
         isLoadingBrowse = true
         defer { isLoadingBrowse = false }
 
@@ -301,11 +299,11 @@ struct LibraryView: View {
         do {
             let page: [AtlasCard]
             if let type = browsing.entityType {
-                page = try store.entities(type: type, limit: pageSize, offset: browseOffset).map(AtlasCard.entity)
+                page = try await catalog.entities(type: type, limit: pageSize, offset: browseOffset).map(AtlasCard.entity)
             } else if let kind = browsing.recipeKind {
-                page = try store.recipes(kind: kind, limit: pageSize, offset: browseOffset).map(AtlasCard.recipe)
+                page = try await catalog.recipes(kind: kind, limit: pageSize, offset: browseOffset).map(AtlasCard.recipe)
             } else if let dataset = browsing.contentDataset {
-                page = try store.contentRecords(
+                page = try await catalog.contentRecords(
                     dataset: dataset,
                     limit: pageSize,
                     offset: browseOffset
@@ -323,7 +321,7 @@ struct LibraryView: View {
     }
 
     private var browseTaskID: String {
-        "\(browsing.id):\(model.pack?.generatedAt ?? "no-pack")"
+        "\(browsing.id):\(model.generationID):\(model.pack?.generatedAt ?? "no-pack")"
     }
 
     private var packCounts: [String: Int] {

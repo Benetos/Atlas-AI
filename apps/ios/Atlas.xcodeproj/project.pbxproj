@@ -37,6 +37,19 @@
 		E1E669DA4B769B73AAA7F246 /* AtlasDownloader.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = 893FAB5E3E75A53C47F22848 /* AtlasDownloader.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E6B5EC62A7CB768A9967BD73 /* Full nms-reference.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = D42C7E91A8B34F65C0D29E17 /* Full nms-reference.sqlite */; };
 		EED9A60C47DC11A86D5390B5 /* InfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C63324E27403782003C8AAC8 /* InfoView.swift */; };
+		96F71BB7BE08C7E7053D31F0 /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 722C76C93E57235136E9A951 /* AppServices.swift */; };
+		35E2A45485C8F1D603000D0A /* FeatureModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A577E4F56338B62ADBBCBE82 /* FeatureModels.swift */; };
+		5CE1907ED591E59987E8BBF9 /* LoadState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2A9FA0D836CCD4699391B8C /* LoadState.swift */; };
+		5E89B34E1EC9E5B2F37D34BF /* SourcePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2F8D99BDF68E4CABB0AB17F /* SourcePresentation.swift */; };
+		803C53502539EFE0A4AEBCD6 /* NMSCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECC63E0D343C0776278CB18D /* NMSCatalog.swift */; };
+		7DAAD388BC56DDEFAD882846 /* AppDestination.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4896E8C7AAA71CDDDF3CF02D /* AppDestination.swift */; };
+		E6CEEB4AF70F4023158B86EE /* AtlasRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52735D56AD433AA95CFA3FFE /* AtlasRouter.swift */; };
+		9393CB68134104DA2815166E /* DestinationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25ED3FE62923D5383A40AE6D /* DestinationView.swift */; };
+		D41BB8B0F356C6DB6E32A7CE /* SavedArtifact.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE72BF250ADD9307FEA24522 /* SavedArtifact.swift */; };
+		14901EE4A96A63C4A5DC9119 /* SavedArtifactsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 253A149DBA8A2E37CFDF9929 /* SavedArtifactsStore.swift */; };
+		85D543280AD6DD26A572F77D /* AppShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA6C334BAC98B496D8B2757 /* AppShellView.swift */; };
+		02D1CC8E330C1A07FCDCDC07 /* LoadableStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E6987AC2D9BDBEF76DD769F /* LoadableStateView.swift */; };
+		86BB24B13B26B9CE133F430D /* Phase1AFoundationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C674E506E8E7383CED5D473 /* Phase1AFoundationTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -109,6 +122,19 @@
 		EC959AC599847BFB9115E668 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		F0DCC0F8696FAAED6BDD4D2F /* Atlas.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Atlas.entitlements; sourceTree = "<group>"; };
 		FDAAC84C9EBDDBC3BA3DF533 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		722C76C93E57235136E9A951 /* AppServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServices.swift; sourceTree = "<group>"; };
+		A577E4F56338B62ADBBCBE82 /* FeatureModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureModels.swift; sourceTree = "<group>"; };
+		E2A9FA0D836CCD4699391B8C /* LoadState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadState.swift; sourceTree = "<group>"; };
+		B2F8D99BDF68E4CABB0AB17F /* SourcePresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcePresentation.swift; sourceTree = "<group>"; };
+		ECC63E0D343C0776278CB18D /* NMSCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NMSCatalog.swift; sourceTree = "<group>"; };
+		4896E8C7AAA71CDDDF3CF02D /* AppDestination.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDestination.swift; sourceTree = "<group>"; };
+		52735D56AD433AA95CFA3FFE /* AtlasRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtlasRouter.swift; sourceTree = "<group>"; };
+		25ED3FE62923D5383A40AE6D /* DestinationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationView.swift; sourceTree = "<group>"; };
+		AE72BF250ADD9307FEA24522 /* SavedArtifact.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedArtifact.swift; sourceTree = "<group>"; };
+		253A149DBA8A2E37CFDF9929 /* SavedArtifactsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedArtifactsStore.swift; sourceTree = "<group>"; };
+		BFA6C334BAC98B496D8B2757 /* AppShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellView.swift; sourceTree = "<group>"; };
+		7E6987AC2D9BDBEF76DD769F /* LoadableStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadableStateView.swift; sourceTree = "<group>"; };
+		8C674E506E8E7383CED5D473 /* Phase1AFoundationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase1AFoundationTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -139,6 +165,7 @@
 		2E1111064B64E4C512EB21CD /* AtlasTests */ = {
 			isa = PBXGroup;
 			children = (
+				8C674E506E8E7383CED5D473 /* Phase1AFoundationTests.swift */,
 				90264F659BF01F6AB890BCAF /* AtlasTests.swift */,
 				67828BA08DAEC116C2662ABE /* Fixtures */,
 			);
@@ -148,6 +175,8 @@
 		329FBD5A3CA4CABBA667DB6C /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				BFA6C334BAC98B496D8B2757 /* AppShellView.swift */,
+				7E6987AC2D9BDBEF76DD769F /* LoadableStateView.swift */,
 				BA12AF80FEC16153EE945E33 /* AtlasView.swift */,
 				CE03008221CF512FDCC5D8B0 /* Cards.swift */,
 				ACFEDF7C0B6F1805CFDD6F80 /* ContentDetailView.swift */,
@@ -163,6 +192,11 @@
 		40E68FA223C8D0BD49C89088 /* Atlas */ = {
 			isa = PBXGroup;
 			children = (
+				AA4A085C1F640643546D6344 /* Environment */,
+				4841FC70911B5B4837A5E04B /* Features */,
+				CFA9E75A1285CB7B5AEF0125 /* Presentation */,
+				3ABEFEF86CD2390160E76F87 /* Repositories */,
+				BBF3781C20590B8CF7F88B09 /* Routing */,
 				8657742E7740E48C9F7036AB /* AppModel.swift */,
 				435A7DB01D1036537F3BB63F /* Assets.xcassets */,
 				F0DCC0F8696FAAED6BDD4D2F /* Atlas.entitlements */,
@@ -223,6 +257,8 @@
 		949FD634D3571E084EC45C61 /* Store */ = {
 			isa = PBXGroup;
 			children = (
+				AE72BF250ADD9307FEA24522 /* SavedArtifact.swift */,
+				253A149DBA8A2E37CFDF9929 /* SavedArtifactsStore.swift */,
 				CDEC3CAE9D06E1B330DDB165 /* LiveAtlasClient.swift */,
 				74F6D5D4A632E331CCF2C5E1 /* PackLifecycle.swift */,
 				550ED055CFA9535478A6DE3F /* PackLocator.swift */,
@@ -275,6 +311,50 @@
 				893FAB5E3E75A53C47F22848 /* AtlasDownloader.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+
+		AA4A085C1F640643546D6344 /* Environment */ = {
+			isa = PBXGroup;
+			children = (
+				722C76C93E57235136E9A951 /* AppServices.swift */,
+			);
+			path = Environment;
+			sourceTree = "<group>";
+		};
+		4841FC70911B5B4837A5E04B /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				A577E4F56338B62ADBBCBE82 /* FeatureModels.swift */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		CFA9E75A1285CB7B5AEF0125 /* Presentation */ = {
+			isa = PBXGroup;
+			children = (
+				E2A9FA0D836CCD4699391B8C /* LoadState.swift */,
+				B2F8D99BDF68E4CABB0AB17F /* SourcePresentation.swift */,
+			);
+			path = Presentation;
+			sourceTree = "<group>";
+		};
+		3ABEFEF86CD2390160E76F87 /* Repositories */ = {
+			isa = PBXGroup;
+			children = (
+				ECC63E0D343C0776278CB18D /* NMSCatalog.swift */,
+			);
+			path = Repositories;
+			sourceTree = "<group>";
+		};
+		BBF3781C20590B8CF7F88B09 /* Routing */ = {
+			isa = PBXGroup;
+			children = (
+				4896E8C7AAA71CDDDF3CF02D /* AppDestination.swift */,
+				52735D56AD433AA95CFA3FFE /* AtlasRouter.swift */,
+				25ED3FE62923D5383A40AE6D /* DestinationView.swift */,
+			);
+			path = Routing;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -411,6 +491,18 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				96F71BB7BE08C7E7053D31F0 /* AppServices.swift in Sources */,
+				35E2A45485C8F1D603000D0A /* FeatureModels.swift in Sources */,
+				5CE1907ED591E59987E8BBF9 /* LoadState.swift in Sources */,
+				5E89B34E1EC9E5B2F37D34BF /* SourcePresentation.swift in Sources */,
+				803C53502539EFE0A4AEBCD6 /* NMSCatalog.swift in Sources */,
+				7DAAD388BC56DDEFAD882846 /* AppDestination.swift in Sources */,
+				E6CEEB4AF70F4023158B86EE /* AtlasRouter.swift in Sources */,
+				9393CB68134104DA2815166E /* DestinationView.swift in Sources */,
+				D41BB8B0F356C6DB6E32A7CE /* SavedArtifact.swift in Sources */,
+				14901EE4A96A63C4A5DC9119 /* SavedArtifactsStore.swift in Sources */,
+				85D543280AD6DD26A572F77D /* AppShellView.swift in Sources */,
+				02D1CC8E330C1A07FCDCDC07 /* LoadableStateView.swift in Sources */,
 				187F3D9BF85B5ACF12293935 /* AppModel.swift in Sources */,
 				2F8EC602ED13B3C08636A2DD /* AppSettings.swift in Sources */,
 				8A61946037B3DB00BDDD37F1 /* AtlasApp.swift in Sources */,
@@ -439,6 +531,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				86BB24B13B26B9CE133F430D /* Phase1AFoundationTests.swift in Sources */,
 				CD0476434D4B6F1578C6E90F /* AtlasTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

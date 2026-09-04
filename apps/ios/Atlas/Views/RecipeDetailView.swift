@@ -2,103 +2,115 @@ import SwiftUI
 
 struct RecipeDetailView: View {
     @Environment(AppModel.self) private var model
+    @Environment(AtlasRouter.self) private var router
     var recipeID: String
-    @State private var recipe: Recipe?
-    @State private var errorMessage: String?
-    @State private var isLoading = true
+    var canDeleteReference: Bool = false
+
+    @State private var feature = RecipeDetailModel()
 
     var body: some View {
-        Group {
-            if isLoading {
-                ProgressView("Loading recipe…")
-            } else if let recipe {
-                List {
-                    Section {
-                        LabeledContent("Kind", value: recipe.recipeKind.capitalized)
-                        if let amount = recipe.outputAmount {
-                            LabeledContent("Output amount", value: amount)
-                        }
-                        if let time = recipe.timeSeconds {
-                            LabeledContent("Time (s)", value: time)
-                        }
-                        if let type = recipe.recipeType {
-                            LabeledContent("Type", value: type)
-                        }
+        LoadableStateView(
+            state: feature.state,
+            loadingTitle: "Loading recipe…",
+            notFoundTitle: "Recipe not in this snapshot",
+            notFoundSystemImage: "list.bullet",
+            failedTitle: "Could not load recipe",
+            onRefresh: { Task { await load() } },
+            onDeleteReference: canDeleteReference ? deleteReference : nil
+        ) { content in
+            List {
+                Section {
+                    LabeledContent("Kind", value: content.recipe.recipeKind.capitalized)
+                    if let amount = content.recipe.outputAmount {
+                        LabeledContent("Output amount", value: amount)
                     }
-                    Section("Output") {
-                        NavigationLink(
-                            value: AtlasRoute.entity(type: recipe.outputEntityType, id: recipe.outputGameID)
+                    if let time = content.recipe.timeSeconds {
+                        LabeledContent("Time (s)", value: time)
+                    }
+                    if let type = content.recipe.recipeType {
+                        LabeledContent("Type", value: type)
+                    }
+                    SourceBadge(presentation: content.provenance, expanded: true)
+                }
+                Section("Output") {
+                    AtlasOpenLink(
+                        destination: .entity(
+                            type: content.recipe.outputEntityType,
+                            id: content.recipe.outputGameID
+                        ),
+                        section: router.selectedSection
+                    ) {
+                        Text(content.recipe.outputTitle ?? content.recipe.outputGameID)
+                    }
+                }
+                Section("Ingredients") {
+                    ForEach(content.recipe.ingredients) { ingredient in
+                        AtlasOpenLink(
+                            destination: .entity(type: ingredient.entityType, id: ingredient.gameID),
+                            section: router.selectedSection
                         ) {
-                            Text(recipe.outputTitle ?? recipe.outputGameID)
-                        }
-                    }
-                    Section("Ingredients") {
-                        ForEach(recipe.ingredients) { ingredient in
-                            NavigationLink(
-                                value: AtlasRoute.entity(type: ingredient.entityType, id: ingredient.gameID)
-                            ) {
-                                HStack {
-                                    Text(ingredient.title ?? ingredient.gameID)
-                                    Spacer()
-                                    if let amount = ingredient.amount {
-                                        Text(amount).foregroundStyle(.secondary)
-                                    }
+                            HStack {
+                                Text(ingredient.title ?? ingredient.gameID)
+                                Spacer()
+                                if let amount = ingredient.amount {
+                                    Text(amount).foregroundStyle(.secondary)
                                 }
                             }
                         }
                     }
                 }
-                .toolbar {
-                    Button {
-                        model.saved.toggle(savedItem(recipe))
-                    } label: {
-                        Image(systemName: model.saved.isSaved(savedItem(recipe)) ? "bookmark.fill" : "bookmark")
-                    }
+            }
+            .toolbar {
+                Button {
+                    Task { await model.saved.toggle(model.bookmark(for: content.recipe)) }
+                } label: {
+                    Image(
+                        systemName: model.saved.isSaved(model.bookmark(for: content.recipe))
+                            ? "bookmark.fill"
+                            : "bookmark"
+                    )
+                    .frame(minWidth: 44, minHeight: 44)
                 }
-            } else if let errorMessage {
-                ContentUnavailableView(
-                    "Could not load recipe",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(errorMessage)
+                .accessibilityLabel(
+                    model.saved.isSaved(model.bookmark(for: content.recipe))
+                        ? "Remove bookmark"
+                        : "Bookmark"
                 )
-            } else {
-                ContentUnavailableView("Recipe not in this snapshot", systemImage: "list.bullet")
             }
         }
-        .navigationTitle(recipe?.title ?? "Recipe")
+        .navigationTitle(loadedTitle)
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: recipeID) {
-            load()
+        .task(id: "\(recipeID):\(model.generationID)") {
+            await load()
         }
+    }
+
+    private var loadedTitle: String {
+        if case .loaded(let content) = feature.state {
+            return content.recipe.title
+        }
+        return "Recipe"
     }
 
     @MainActor
-    private func load() {
-        isLoading = true
-        recipe = nil
-        errorMessage = nil
-        defer { isLoading = false }
-        guard let store = model.store else {
-            errorMessage = "The local Atlas pack is unavailable."
+    private func load() async {
+        guard let catalog = model.catalog else {
+            feature.state = .failed(CatalogError.unavailable.localizedDescription)
             return
         }
-        do {
-            guard let loadedRecipe = try store.recipe(id: recipeID) else { return }
-            recipe = loadedRecipe
-            model.saved.remember(savedItem(loadedRecipe))
-        } catch {
-            errorMessage = error.localizedDescription
+        await feature.load(id: recipeID, catalog: catalog, packIdentity: model.packIdentity)
+        if case .loaded(let content) = feature.state {
+            await model.saved.remember(model.bookmark(for: content.recipe))
         }
     }
 
-    private func savedItem(_ recipe: Recipe) -> SavedItem {
-        SavedItem(
-            kind: .recipe,
-            entityType: recipe.outputEntityType,
-            gameID: recipe.outputGameID,
-            recipeID: recipe.recipeID,
-            title: recipe.title,
-            savedAt: Date()
-        )
+    private func deleteReference() {
+        Task {
+            let key = BookmarkTarget.recipe(id: recipeID).stableID
+            if let index = model.saved.items.firstIndex(where: { $0.id == key }) {
+                await model.saved.removeItems(at: IndexSet(integer: index))
+            }
+            router.pop(in: router.selectedSection)
+        }
     }
 }
