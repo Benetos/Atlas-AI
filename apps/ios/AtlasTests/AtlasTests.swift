@@ -61,6 +61,16 @@ final class AtlasQueryPlanTests: XCTestCase {
         XCTAssertEqual(plan.localSearchQueries, ["warp cells", "warp cell"])
     }
 
+    func testNeedQuantityPromptDropsIntegerFromLocalSearch() {
+        let plan = AtlasQueryPlan(prompt: "I need 12 Circuit Boards")
+
+        XCTAssertEqual(plan.source, .local)
+        XCTAssertEqual(plan.goal, .lookup)
+        XCTAssertEqual(plan.localQuery, "Circuit Boards")
+        XCTAssertFalse((plan.localQuery ?? "").contains("12"))
+        XCTAssertEqual(plan.localSearchQueries, ["Circuit Boards", "circuit board"])
+    }
+
     func testCurrentExpeditionPromptUsesWeb() {
         let plan = AtlasQueryPlan(
             prompt: "Search the web for current No Man's Sky expedition"

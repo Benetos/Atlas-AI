@@ -15,10 +15,12 @@ enum PackStatus: Equatable {
 final class AppModel {
     var packStatus: PackStatus = .locating
     var store: SQLiteNMSStore?
+    var catalog: (any NMSCatalog)?
     var pack: PackManifest?
-    var settings = AppSettings()
-    var saved = SavedStore()
-    var path = NavigationPath()
+    var packIdentity: PackIdentity?
+    var generationID: UInt64 = 0
+    var settings: AppSettings
+    var saved: SavedStore
     var liveRevision: String?
     var liveRevisionError: String?
     var packRole: String?
@@ -27,9 +29,32 @@ final class AppModel {
     var packUpdateProgress: Double?
     var isPackUpdateRunning = false
 
+    let services: AppServices
     private var activationStore: PackActivationStore?
 
+    init(services: AppServices = .live) {
+        self.services = services
+        self.settings = AppSettings(defaults: services.userDefaults)
+        self.saved = SavedStore(
+            artifacts: SavedArtifactsStore(
+                directory: services.savedDirectory,
+                clock: services.clock
+            ),
+            defaults: services.userDefaults
+        )
+        self.catalog = services.catalog
+        self.packIdentity = services.packIdentity
+        if services.catalog != nil {
+            packStatus = .ready
+        }
+    }
+
     func bootstrap() async {
+        await saved.bootstrap()
+        if services.catalog != nil {
+            packStatus = .ready
+            return
+        }
         guard !isPackUpdateRunning else { return }
         isPackUpdateRunning = true
         packStatus = .locating
@@ -106,11 +131,14 @@ final class AppModel {
         let opened = try SQLiteNMSStore(fileURL: verified.sqliteURL)
         let manifest = try opened.manifest()
         store = opened
+        catalog = SQLiteNMSCatalog(store: opened, packRole: verified.sidecar.packRole)
         pack = manifest
+        packIdentity = PackIdentity(manifest: manifest, packRole: verified.sidecar.packRole)
         packRole = verified.sidecar.packRole
         packRecoveryMessage = verified.recoveredFromRollback
             ? "Atlas recovered the previous verified database after the active copy failed validation."
             : nil
+        generationID += 1
     }
 
     private func apply(_ progress: ManagedPackProgress) {
@@ -140,6 +168,7 @@ final class AppModel {
             liveRevisionError = nil
             return
         }
+        services.network.record("liveAtlas.sourceCommitSHA")
         do {
             liveRevision = try await LiveAtlasClient(settings: settings).sourceCommitSHA()
             liveRevisionError = nil
@@ -148,10 +177,12 @@ final class AppModel {
             liveRevisionError = error.localizedDescription
         }
     }
-}
 
-enum AtlasRoute: Hashable {
-    case entity(type: String, id: String)
-    case recipe(id: String)
-    case content(dataset: String, id: String, sourceOrdinal: Int)
+    func bookmark(for entity: Entity) -> SavedItem {
+        .entity(entity, savedAt: services.clock.now(), packReleaseID: packIdentity?.sourceCommitSHA)
+    }
+
+    func bookmark(for recipe: Recipe) -> SavedItem {
+        .recipe(recipe, savedAt: services.clock.now(), packReleaseID: packIdentity?.sourceCommitSHA)
+    }
 }

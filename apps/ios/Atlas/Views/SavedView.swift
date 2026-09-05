@@ -4,63 +4,103 @@ struct SavedView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section("Bookmarks") {
-                    if model.saved.items.isEmpty {
-                        Text("Bookmark items and recipes from their detail screens.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(model.saved.items) { item in
-                            savedLink(item)
-                        }
-                        .onDelete(perform: model.saved.removeItems)
-                    }
-                }
+        List {
+            if let error = model.saved.lastError {
                 Section {
-                    if model.saved.recents.isEmpty {
-                        Text("Items and recipes you open will appear here.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(model.saved.recents) { item in
-                            savedLink(item)
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Section("Plans") {
+                if model.saved.recipePlans.isEmpty {
+                    Text("Save a recipe plan from Atlas or an item detail screen.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(model.saved.recipePlans) { plan in
+                        AtlasOpenLink(
+                            destination: plan.destination,
+                            section: .saved,
+                            replacesPath: true
+                        ) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(plan.title)
+                                Text("Revision \(plan.revision) · \(plan.checkedCount)/\(plan.checklist.count) gathered")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                if !plan.packReleaseID.isEmpty {
+                                    SourceBadge(
+                                        presentation: SourcePresentation(
+                                            kind: .calculated,
+                                            releaseLabel: String(plan.packReleaseID.prefix(12))
+                                        ),
+                                        expanded: true
+                                    )
+                                }
+                            }
                         }
                     }
-                } header: {
-                    HStack {
-                        Text("Recents")
-                        Spacer()
-                        if !model.saved.recents.isEmpty {
-                            Button("Clear", action: model.saved.clearRecents)
-                                .font(.caption)
-                        }
+                    .onDelete { offsets in
+                        Task { await model.saved.removeRecipePlans(at: offsets) }
                     }
                 }
             }
-            .navigationTitle("Saved")
-            .navigationDestination(for: AtlasRoute.self) { route in
-                switch route {
-                case .entity(let type, let id):
-                    EntityDetailView(entityType: type, gameID: id)
-                case .recipe(let id):
-                    RecipeDetailView(recipeID: id)
-                case .content(let dataset, let id, let sourceOrdinal):
-                    ContentDetailView(dataset: dataset, externalID: id, sourceOrdinal: sourceOrdinal)
+            Section("Bookmarks") {
+                if model.saved.items.isEmpty {
+                    Text("Bookmark items and recipes from their detail screens.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(model.saved.items) { item in
+                        savedLink(item)
+                    }
+                    .onDelete { offsets in
+                        Task { await model.saved.removeItems(at: offsets) }
+                    }
+                }
+            }
+            Section {
+                if model.saved.recents.isEmpty {
+                    Text("Items and recipes you open will appear here.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(model.saved.recents) { item in
+                        savedLink(item)
+                    }
+                }
+            } header: {
+                HStack {
+                    Text("Recents")
+                    Spacer()
+                    if !model.saved.recents.isEmpty {
+                        Button("Clear") {
+                            Task { await model.saved.clearRecents() }
+                        }
+                        .font(.caption)
+                        .frame(minHeight: 44)
+                    }
                 }
             }
         }
+        .navigationTitle("Saved")
     }
 
     @ViewBuilder
     private func savedLink(_ item: SavedItem) -> some View {
-        switch item.kind {
-        case .entity:
-            NavigationLink(value: AtlasRoute.entity(type: item.entityType ?? "", id: item.gameID ?? "")) {
+        AtlasOpenLink(
+            destination: .savedArtifact(id: item.id),
+            section: .saved,
+            replacesPath: true
+        ) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(item.title)
-            }
-        case .recipe:
-            NavigationLink(value: AtlasRoute.recipe(id: item.recipeID ?? "")) {
-                Text(item.title)
+                if let release = item.originatingPackReleaseID, !release.isEmpty {
+                    SourceBadge(
+                        presentation: SourcePresentation(
+                            kind: .packed,
+                            releaseLabel: String(release.prefix(12))
+                        ),
+                        expanded: true
+                    )
+                }
             }
         }
     }

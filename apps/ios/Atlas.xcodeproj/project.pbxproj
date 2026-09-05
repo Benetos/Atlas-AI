@@ -37,6 +37,33 @@
 		E1E669DA4B769B73AAA7F246 /* AtlasDownloader.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = 893FAB5E3E75A53C47F22848 /* AtlasDownloader.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E6B5EC62A7CB768A9967BD73 /* Full nms-reference.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = D42C7E91A8B34F65C0D29E17 /* Full nms-reference.sqlite */; };
 		EED9A60C47DC11A86D5390B5 /* InfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C63324E27403782003C8AAC8 /* InfoView.swift */; };
+		96F71BB7BE08C7E7053D31F0 /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 722C76C93E57235136E9A951 /* AppServices.swift */; };
+		35E2A45485C8F1D603000D0A /* FeatureModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A577E4F56338B62ADBBCBE82 /* FeatureModels.swift */; };
+		5CE1907ED591E59987E8BBF9 /* LoadState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2A9FA0D836CCD4699391B8C /* LoadState.swift */; };
+		5E89B34E1EC9E5B2F37D34BF /* SourcePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2F8D99BDF68E4CABB0AB17F /* SourcePresentation.swift */; };
+		803C53502539EFE0A4AEBCD6 /* NMSCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECC63E0D343C0776278CB18D /* NMSCatalog.swift */; };
+		7DAAD388BC56DDEFAD882846 /* AppDestination.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4896E8C7AAA71CDDDF3CF02D /* AppDestination.swift */; };
+		E6CEEB4AF70F4023158B86EE /* AtlasRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52735D56AD433AA95CFA3FFE /* AtlasRouter.swift */; };
+		9393CB68134104DA2815166E /* DestinationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25ED3FE62923D5383A40AE6D /* DestinationView.swift */; };
+		D41BB8B0F356C6DB6E32A7CE /* SavedArtifact.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE72BF250ADD9307FEA24522 /* SavedArtifact.swift */; };
+		14901EE4A96A63C4A5DC9119 /* SavedArtifactsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 253A149DBA8A2E37CFDF9929 /* SavedArtifactsStore.swift */; };
+		85D543280AD6DD26A572F77D /* AppShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA6C334BAC98B496D8B2757 /* AppShellView.swift */; };
+		02D1CC8E330C1A07FCDCDC07 /* LoadableStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E6987AC2D9BDBEF76DD769F /* LoadableStateView.swift */; };
+		1A012B723896641ACDDBDE3C /* SourcePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87BCBBF60E7D91ED4A767D91 /* SourcePolicy.swift */; };
+		1E51066E0D3E8E7A56F58DDD /* ActionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48CC872A6C805E30B299BA0E /* ActionPolicy.swift */; };
+		10DDDA0EBB7046D265E5A3C0 /* EvidenceLedger.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8887080E98D5DDF8E246A3D /* EvidenceLedger.swift */; };
+		5C97C212405E817C324BF126 /* Claims.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D5C9691E080C499CA1C915D /* Claims.swift */; };
+		3300A39D83B4DA6FCE93B4BD /* ConversationBounds.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97859641C55FC7E7199D9049 /* ConversationBounds.swift */; };
+		34EA3A4CCF9D9D46CCFBC90D /* GroundedRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44563B7619A2DB0E09DC95E9 /* GroundedRenderer.swift */; };
+		FC3035318E97B482F94A57AC /* AtlasConversationEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13C7151A71CF8AD5AFFC3D81 /* AtlasConversationEngine.swift */; };
+		C91FDAAEC6E74C44BF9ECBFA /* LocalDatabaseToolRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 605493340B54621F4AB53EC5 /* LocalDatabaseToolRegistry.swift */; };
+		1C20FEACA44BFE59BEC7DD90 /* LocalKnowledgeToolRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E8C19E2A3E9685FB25D1975 /* LocalKnowledgeToolRegistry.swift */; };
+		D5F170F764B3752B5C5A52D5 /* Phase1BFoundationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 762AFB8CAED3123194ED369D /* Phase1BFoundationTests.swift */; };
+		014A428E513DA4C0729FB346 /* RecipeGraphEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A41F8C2E9B7D4E6A1C3F5D80 /* RecipeGraphEngine.swift */; };
+		125B539F624EB5D183A0C457 /* RecipePlanModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B52E9D3F0C8E5F7B2D4A6E91 /* RecipePlanModels.swift */; };
+		236C64A0735FC6E294B1D568 /* RecipePlanModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C63F0E4A1D9F608C3E5B7F02 /* RecipePlanModel.swift */; };
+		347D75B18470D7F3A5C2E679 /* RecipePlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7401F5B2E0A719D4F6C8013 /* RecipePlanView.swift */; };
+		458E86C29581E804B6D3F78A /* RecipeGraphEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E851206C3F1B82AE507D9124 /* RecipeGraphEngineTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -109,6 +136,34 @@
 		EC959AC599847BFB9115E668 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		F0DCC0F8696FAAED6BDD4D2F /* Atlas.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Atlas.entitlements; sourceTree = "<group>"; };
 		FDAAC84C9EBDDBC3BA3DF533 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		722C76C93E57235136E9A951 /* AppServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServices.swift; sourceTree = "<group>"; };
+		A577E4F56338B62ADBBCBE82 /* FeatureModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureModels.swift; sourceTree = "<group>"; };
+		E2A9FA0D836CCD4699391B8C /* LoadState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadState.swift; sourceTree = "<group>"; };
+		B2F8D99BDF68E4CABB0AB17F /* SourcePresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcePresentation.swift; sourceTree = "<group>"; };
+		ECC63E0D343C0776278CB18D /* NMSCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NMSCatalog.swift; sourceTree = "<group>"; };
+		4896E8C7AAA71CDDDF3CF02D /* AppDestination.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDestination.swift; sourceTree = "<group>"; };
+		52735D56AD433AA95CFA3FFE /* AtlasRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtlasRouter.swift; sourceTree = "<group>"; };
+		25ED3FE62923D5383A40AE6D /* DestinationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DestinationView.swift; sourceTree = "<group>"; };
+		AE72BF250ADD9307FEA24522 /* SavedArtifact.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedArtifact.swift; sourceTree = "<group>"; };
+		253A149DBA8A2E37CFDF9929 /* SavedArtifactsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedArtifactsStore.swift; sourceTree = "<group>"; };
+		BFA6C334BAC98B496D8B2757 /* AppShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellView.swift; sourceTree = "<group>"; };
+		7E6987AC2D9BDBEF76DD769F /* LoadableStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadableStateView.swift; sourceTree = "<group>"; };
+		8C674E506E8E7383CED5D473 /* Phase1AFoundationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase1AFoundationTests.swift; sourceTree = "<group>"; };
+		87BCBBF60E7D91ED4A767D91 /* SourcePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourcePolicy.swift; sourceTree = "<group>"; };
+		48CC872A6C805E30B299BA0E /* ActionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionPolicy.swift; sourceTree = "<group>"; };
+		C8887080E98D5DDF8E246A3D /* EvidenceLedger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvidenceLedger.swift; sourceTree = "<group>"; };
+		9D5C9691E080C499CA1C915D /* Claims.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Claims.swift; sourceTree = "<group>"; };
+		97859641C55FC7E7199D9049 /* ConversationBounds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationBounds.swift; sourceTree = "<group>"; };
+		44563B7619A2DB0E09DC95E9 /* GroundedRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroundedRenderer.swift; sourceTree = "<group>"; };
+		13C7151A71CF8AD5AFFC3D81 /* AtlasConversationEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AtlasConversationEngine.swift; sourceTree = "<group>"; };
+		605493340B54621F4AB53EC5 /* LocalDatabaseToolRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalDatabaseToolRegistry.swift; sourceTree = "<group>"; };
+		8E8C19E2A3E9685FB25D1975 /* LocalKnowledgeToolRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalKnowledgeToolRegistry.swift; sourceTree = "<group>"; };
+		762AFB8CAED3123194ED369D /* Phase1BFoundationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Phase1BFoundationTests.swift; sourceTree = "<group>"; };
+		A41F8C2E9B7D4E6A1C3F5D80 /* RecipeGraphEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeGraphEngine.swift; sourceTree = "<group>"; };
+		B52E9D3F0C8E5F7B2D4A6E91 /* RecipePlanModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipePlanModels.swift; sourceTree = "<group>"; };
+		C63F0E4A1D9F608C3E5B7F02 /* RecipePlanModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipePlanModel.swift; sourceTree = "<group>"; };
+		D7401F5B2E0A719D4F6C8013 /* RecipePlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipePlanView.swift; sourceTree = "<group>"; };
+		E851206C3F1B82AE507D9124 /* RecipeGraphEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeGraphEngineTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -139,6 +194,9 @@
 		2E1111064B64E4C512EB21CD /* AtlasTests */ = {
 			isa = PBXGroup;
 			children = (
+				8C674E506E8E7383CED5D473 /* Phase1AFoundationTests.swift */,
+				762AFB8CAED3123194ED369D /* Phase1BFoundationTests.swift */,
+				E851206C3F1B82AE507D9124 /* RecipeGraphEngineTests.swift */,
 				90264F659BF01F6AB890BCAF /* AtlasTests.swift */,
 				67828BA08DAEC116C2662ABE /* Fixtures */,
 			);
@@ -148,6 +206,8 @@
 		329FBD5A3CA4CABBA667DB6C /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				BFA6C334BAC98B496D8B2757 /* AppShellView.swift */,
+				7E6987AC2D9BDBEF76DD769F /* LoadableStateView.swift */,
 				BA12AF80FEC16153EE945E33 /* AtlasView.swift */,
 				CE03008221CF512FDCC5D8B0 /* Cards.swift */,
 				ACFEDF7C0B6F1805CFDD6F80 /* ContentDetailView.swift */,
@@ -155,6 +215,7 @@
 				C63324E27403782003C8AAC8 /* InfoView.swift */,
 				FDAAC84C9EBDDBC3BA3DF533 /* LibraryView.swift */,
 				D149A922C4CF4E1037C57E5A /* RecipeDetailView.swift */,
+				D7401F5B2E0A719D4F6C8013 /* RecipePlanView.swift */,
 				38E7F5DC787F849570FF40C4 /* SavedView.swift */,
 			);
 			path = Views;
@@ -163,6 +224,16 @@
 		40E68FA223C8D0BD49C89088 /* Atlas */ = {
 			isa = PBXGroup;
 			children = (
+				AA4A085C1F640643546D6344 /* Environment */,
+				4841FC70911B5B4837A5E04B /* Features */,
+				CFA9E75A1285CB7B5AEF0125 /* Presentation */,
+				3ABEFEF86CD2390160E76F87 /* Repositories */,
+				BBF3781C20590B8CF7F88B09 /* Routing */,
+				8AD154E3151E3FA427DBD501 /* Policy */,
+				063A352AFEFE1EB3640684F9 /* Evidence */,
+				E90A692ED240E47ACC67D7DA /* Conversation */,
+				5497B67A0913359EF9E0D8A8 /* Tools */,
+				F962317D402C93BF618EA235 /* Planner */,
 				8657742E7740E48C9F7036AB /* AppModel.swift */,
 				435A7DB01D1036537F3BB63F /* Assets.xcassets */,
 				F0DCC0F8696FAAED6BDD4D2F /* Atlas.entitlements */,
@@ -223,6 +294,8 @@
 		949FD634D3571E084EC45C61 /* Store */ = {
 			isa = PBXGroup;
 			children = (
+				AE72BF250ADD9307FEA24522 /* SavedArtifact.swift */,
+				253A149DBA8A2E37CFDF9929 /* SavedArtifactsStore.swift */,
 				CDEC3CAE9D06E1B330DDB165 /* LiveAtlasClient.swift */,
 				74F6D5D4A632E331CCF2C5E1 /* PackLifecycle.swift */,
 				550ED055CFA9535478A6DE3F /* PackLocator.swift */,
@@ -275,6 +348,97 @@
 				893FAB5E3E75A53C47F22848 /* AtlasDownloader.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+
+		AA4A085C1F640643546D6344 /* Environment */ = {
+			isa = PBXGroup;
+			children = (
+				722C76C93E57235136E9A951 /* AppServices.swift */,
+			);
+			path = Environment;
+			sourceTree = "<group>";
+		};
+		4841FC70911B5B4837A5E04B /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				A577E4F56338B62ADBBCBE82 /* FeatureModels.swift */,
+				C63F0E4A1D9F608C3E5B7F02 /* RecipePlanModel.swift */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		CFA9E75A1285CB7B5AEF0125 /* Presentation */ = {
+			isa = PBXGroup;
+			children = (
+				E2A9FA0D836CCD4699391B8C /* LoadState.swift */,
+				B2F8D99BDF68E4CABB0AB17F /* SourcePresentation.swift */,
+			);
+			path = Presentation;
+			sourceTree = "<group>";
+		};
+		3ABEFEF86CD2390160E76F87 /* Repositories */ = {
+			isa = PBXGroup;
+			children = (
+				ECC63E0D343C0776278CB18D /* NMSCatalog.swift */,
+			);
+			path = Repositories;
+			sourceTree = "<group>";
+		};
+		BBF3781C20590B8CF7F88B09 /* Routing */ = {
+			isa = PBXGroup;
+			children = (
+				4896E8C7AAA71CDDDF3CF02D /* AppDestination.swift */,
+				52735D56AD433AA95CFA3FFE /* AtlasRouter.swift */,
+				25ED3FE62923D5383A40AE6D /* DestinationView.swift */,
+			);
+			path = Routing;
+			sourceTree = "<group>";
+		};
+		8AD154E3151E3FA427DBD501 /* Policy */ = {
+			isa = PBXGroup;
+			children = (
+				87BCBBF60E7D91ED4A767D91 /* SourcePolicy.swift */,
+				48CC872A6C805E30B299BA0E /* ActionPolicy.swift */,
+			);
+			path = Policy;
+			sourceTree = "<group>";
+		};
+		063A352AFEFE1EB3640684F9 /* Evidence */ = {
+			isa = PBXGroup;
+			children = (
+				C8887080E98D5DDF8E246A3D /* EvidenceLedger.swift */,
+				9D5C9691E080C499CA1C915D /* Claims.swift */,
+			);
+			path = Evidence;
+			sourceTree = "<group>";
+		};
+		E90A692ED240E47ACC67D7DA /* Conversation */ = {
+			isa = PBXGroup;
+			children = (
+				97859641C55FC7E7199D9049 /* ConversationBounds.swift */,
+				44563B7619A2DB0E09DC95E9 /* GroundedRenderer.swift */,
+				13C7151A71CF8AD5AFFC3D81 /* AtlasConversationEngine.swift */,
+			);
+			path = Conversation;
+			sourceTree = "<group>";
+		};
+		5497B67A0913359EF9E0D8A8 /* Tools */ = {
+			isa = PBXGroup;
+			children = (
+				605493340B54621F4AB53EC5 /* LocalDatabaseToolRegistry.swift */,
+				8E8C19E2A3E9685FB25D1975 /* LocalKnowledgeToolRegistry.swift */,
+			);
+			path = Tools;
+			sourceTree = "<group>";
+		};
+		F962317D402C93BF618EA235 /* Planner */ = {
+			isa = PBXGroup;
+			children = (
+				A41F8C2E9B7D4E6A1C3F5D80 /* RecipeGraphEngine.swift */,
+				B52E9D3F0C8E5F7B2D4A6E91 /* RecipePlanModels.swift */,
+			);
+			path = Planner;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -411,6 +575,31 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				96F71BB7BE08C7E7053D31F0 /* AppServices.swift in Sources */,
+				35E2A45485C8F1D603000D0A /* FeatureModels.swift in Sources */,
+				5CE1907ED591E59987E8BBF9 /* LoadState.swift in Sources */,
+				5E89B34E1EC9E5B2F37D34BF /* SourcePresentation.swift in Sources */,
+				803C53502539EFE0A4AEBCD6 /* NMSCatalog.swift in Sources */,
+				7DAAD388BC56DDEFAD882846 /* AppDestination.swift in Sources */,
+				E6CEEB4AF70F4023158B86EE /* AtlasRouter.swift in Sources */,
+				9393CB68134104DA2815166E /* DestinationView.swift in Sources */,
+				D41BB8B0F356C6DB6E32A7CE /* SavedArtifact.swift in Sources */,
+				14901EE4A96A63C4A5DC9119 /* SavedArtifactsStore.swift in Sources */,
+				85D543280AD6DD26A572F77D /* AppShellView.swift in Sources */,
+				02D1CC8E330C1A07FCDCDC07 /* LoadableStateView.swift in Sources */,
+				1A012B723896641ACDDBDE3C /* SourcePolicy.swift in Sources */,
+				1E51066E0D3E8E7A56F58DDD /* ActionPolicy.swift in Sources */,
+				10DDDA0EBB7046D265E5A3C0 /* EvidenceLedger.swift in Sources */,
+				5C97C212405E817C324BF126 /* Claims.swift in Sources */,
+				3300A39D83B4DA6FCE93B4BD /* ConversationBounds.swift in Sources */,
+				34EA3A4CCF9D9D46CCFBC90D /* GroundedRenderer.swift in Sources */,
+				FC3035318E97B482F94A57AC /* AtlasConversationEngine.swift in Sources */,
+				C91FDAAEC6E74C44BF9ECBFA /* LocalDatabaseToolRegistry.swift in Sources */,
+				1C20FEACA44BFE59BEC7DD90 /* LocalKnowledgeToolRegistry.swift in Sources */,
+				014A428E513DA4C0729FB346 /* RecipeGraphEngine.swift in Sources */,
+				125B539F624EB5D183A0C457 /* RecipePlanModels.swift in Sources */,
+				236C64A0735FC6E294B1D568 /* RecipePlanModel.swift in Sources */,
+				347D75B18470D7F3A5C2E679 /* RecipePlanView.swift in Sources */,
 				187F3D9BF85B5ACF12293935 /* AppModel.swift in Sources */,
 				2F8EC602ED13B3C08636A2DD /* AppSettings.swift in Sources */,
 				8A61946037B3DB00BDDD37F1 /* AtlasApp.swift in Sources */,
@@ -439,6 +628,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				86BB24B13B26B9CE133F430D /* Phase1AFoundationTests.swift in Sources */,
+				D5F170F764B3752B5C5A52D5 /* Phase1BFoundationTests.swift in Sources */,
+				458E86C29581E804B6D3F78A /* RecipeGraphEngineTests.swift in Sources */,
 				CD0476434D4B6F1578C6E90F /* AtlasTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

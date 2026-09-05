@@ -340,26 +340,21 @@ enum FoundationModelsAtlas {
     }
 }
 
-/// The complete model-callable database surface. Its concrete initializer only
-/// accepts the installed SQLite pack, so a network repository cannot be
-/// registered accidentally as an Atlas database tool.
 @available(iOS 26.0, macOS 26.0, *)
-enum LocalDatabaseToolRegistry {
-    static let expectedNames = [
-        "search_entities",
-        "get_entity",
-        "recipes_for",
-        "recipes_using",
-        "search_content",
-    ]
-
+extension LocalDatabaseToolRegistry {
+    /// Foundation Models wrappers over the typed registry. The concrete
+    /// initializer still only accepts the installed SQLite pack.
     static func make(store: SQLiteNMSStore) -> [any Tool] {
         [
             SearchEntitiesTool(store: store),
             GetEntityTool(store: store),
+            SearchRecipesTool(store: store),
+            GetRecipeTool(store: store),
             RecipesForTool(store: store),
             RecipesUsingTool(store: store),
             SearchContentTool(store: store),
+            GetContentTool(store: store),
+            GetPackProvenanceTool(store: store),
         ]
     }
 }
@@ -378,7 +373,10 @@ struct SearchEntitiesTool: Tool {
 
     func call(arguments: Arguments) async throws -> String {
         let rows = try store.searchEntities(query: arguments.query, type: arguments.entityType, limit: 8)
-        return encode(rows.map { ["title": $0.title, "type": $0.entityType, "id": $0.gameID] })
+        return encodeToolOutput(
+            store: store,
+            records: rows.map { ["title": $0.title, "type": $0.entityType, "id": $0.gameID] }
+        )
     }
 }
 
@@ -398,13 +396,53 @@ struct GetEntityTool: Tool {
         guard let entity = try store.entity(type: arguments.entityType, id: arguments.gameId) else {
             return "{\"error\":\"not found\"}"
         }
-        return encode([
-            "title": entity.title,
-            "type": entity.entityType,
-            "id": entity.gameID,
-            "subtitle": entity.subtitle ?? "",
-            "description": entity.description ?? "",
-        ])
+        return encodeToolOutput(
+            store: store,
+            records: [[
+                "title": entity.title,
+                "type": entity.entityType,
+                "id": entity.gameID,
+                "subtitle": entity.subtitle ?? "",
+                "description": entity.description ?? "",
+            ]]
+        )
+    }
+}
+
+@available(iOS 26.0, macOS 26.0, *)
+struct SearchRecipesTool: Tool {
+    let store: SQLiteNMSStore
+    let name = "search_recipes"
+    let description = "Search local Atlas crafting, refining, and cooking recipes."
+
+    @Generable
+    struct Arguments {
+        var query: String
+        var recipeKind: String?
+    }
+
+    func call(arguments: Arguments) async throws -> String {
+        let rows = try store.searchRecipes(query: arguments.query, kind: arguments.recipeKind, limit: 8)
+        return encodeToolOutput(store: store, records: rows.map { recipeJSON($0) })
+    }
+}
+
+@available(iOS 26.0, macOS 26.0, *)
+struct GetRecipeTool: Tool {
+    let store: SQLiteNMSStore
+    let name = "get_recipe"
+    let description = "Load one local Atlas recipe by id."
+
+    @Generable
+    struct Arguments {
+        var recipeId: String
+    }
+
+    func call(arguments: Arguments) async throws -> String {
+        guard let recipe = try store.recipe(id: arguments.recipeId) else {
+            return encodeToolOutput(store: store, status: "notFound", records: [] as [Any])
+        }
+        return encodeToolOutput(store: store, records: [recipeJSON(recipe)])
     }
 }
 
@@ -426,7 +464,7 @@ struct RecipesForTool: Tool {
             id: arguments.gameId,
             limit: 8
         )
-        return encode(rows.map { recipeJSON($0) })
+        return encodeToolOutput(store: store, records: rows.map { recipeJSON($0) })
     }
 }
 
@@ -448,7 +486,7 @@ struct RecipesUsingTool: Tool {
             id: arguments.gameId,
             limit: 8
         )
-        return encode(rows.map { recipeJSON($0) })
+        return encodeToolOutput(store: store, records: rows.map { recipeJSON($0) })
     }
 }
 
@@ -466,7 +504,62 @@ struct SearchContentTool: Tool {
 
     func call(arguments: Arguments) async throws -> String {
         let rows = try store.searchContent(query: arguments.query, dataset: arguments.dataset, limit: 8)
-        return encode(rows.map { ["dataset": $0.dataset, "id": $0.externalID, "title": $0.title] })
+        return encodeToolOutput(
+            store: store,
+            records: rows.map { ["dataset": $0.dataset, "id": $0.externalID, "title": $0.title] }
+        )
+    }
+}
+
+@available(iOS 26.0, macOS 26.0, *)
+struct GetContentTool: Tool {
+    let store: SQLiteNMSStore
+    let name = "get_content"
+    let description = "Load one packed feature record by dataset, id, and source ordinal."
+
+    @Generable
+    struct Arguments {
+        var dataset: String
+        var externalId: String
+        var sourceOrdinal: Int
+    }
+
+    func call(arguments: Arguments) async throws -> String {
+        guard let record = try store.content(
+            dataset: arguments.dataset,
+            id: arguments.externalId,
+            sourceOrdinal: arguments.sourceOrdinal
+        ) else {
+            return encodeToolOutput(store: store, status: "notFound", records: [] as [Any])
+        }
+        return encodeToolOutput(
+            store: store,
+            records: [["dataset": record.dataset, "id": record.externalID, "title": record.title]]
+        )
+    }
+}
+
+@available(iOS 26.0, macOS 26.0, *)
+struct GetPackProvenanceTool: Tool {
+    let store: SQLiteNMSStore
+    let name = "get_pack_provenance"
+    let description = "Return the installed pack release and source commit."
+
+    @Generable
+    struct Arguments {
+        var unused: String?
+    }
+
+    func call(arguments: Arguments) async throws -> String {
+        let manifest = try store.manifest()
+        return encodeToolOutput(
+            store: store,
+            records: [[
+                "sourceCommitSHA": manifest.sourceCommitSHA,
+                "packSchemaVersion": String(manifest.packSchemaVersion),
+                "generatedAt": manifest.generatedAt,
+            ]]
+        )
     }
 }
 
@@ -492,6 +585,23 @@ private func recipeJSON(_ recipe: Recipe) -> [String: Any] {
             ] as [String: Any]
         },
     ]
+}
+
+@available(iOS 26.0, macOS 26.0, *)
+private func encodeToolOutput(
+    store: SQLiteNMSStore,
+    status: String = "ok",
+    records: Any,
+    evidenceIDs: [String] = []
+) -> String {
+    let sha = (try? store.manifest().sourceCommitSHA) ?? ""
+    return encode([
+        "status": status,
+        "evidenceIDs": evidenceIDs,
+        "packReleaseID": sha,
+        "sourceSHA": sha,
+        "records": records,
+    ])
 }
 
 @available(iOS 26.0, macOS 26.0, *)

@@ -1,18 +1,24 @@
 import SwiftUI
 
+@Observable
+@MainActor
+final class LibrarySessionModel {
+    var query = ""
+    var results: [AtlasCard] = []
+    var browsing: LibraryView.BrowseSection = .products
+    var searchScope: LibraryView.SearchScope = .all
+    var browseResults: [AtlasCard] = []
+    var browseOffset = 0
+    var browseHasMore = true
+    var isSearching = false
+    var isLoadingBrowse = false
+    var searchError: String?
+    var browseError: String?
+}
+
 struct LibraryView: View {
     @Environment(AppModel.self) private var model
-    @State private var query = ""
-    @State private var results: [AtlasCard] = []
-    @State private var browsing: BrowseSection = .products
-    @State private var searchScope: SearchScope = .all
-    @State private var browseResults: [AtlasCard] = []
-    @State private var browseOffset = 0
-    @State private var browseHasMore = true
-    @State private var isSearching = false
-    @State private var isLoadingBrowse = false
-    @State private var searchError: String?
-    @State private var browseError: String?
+    @Environment(LibrarySessionModel.self) private var session
 
     private let pageSize = 60
 
@@ -91,37 +97,31 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            List {
-                if trimmedQuery.isEmpty {
-                    browseSection
-                } else {
-                    searchSection
-                }
-            }
-            .navigationTitle("Library")
-            .searchable(text: $query, prompt: "Items, recipes, expeditions, and more")
-            .navigationDestination(for: AtlasRoute.self) { route in
-                switch route {
-                case .entity(let type, let id):
-                    EntityDetailView(entityType: type, gameID: id)
-                case .recipe(let id):
-                    RecipeDetailView(recipeID: id)
-                case .content(let dataset, let id, let sourceOrdinal):
-                    ContentDetailView(dataset: dataset, externalID: id, sourceOrdinal: sourceOrdinal)
-                }
-            }
-            .task(id: browseTaskID) {
-                await loadBrowse(reset: true)
-            }
-            .task(id: searchTaskID) {
-                await searchAfterDebounce()
+        @Bindable var session = session
+        return List {
+            if trimmedQuery.isEmpty {
+                browseSection
+            } else {
+                searchSection
             }
         }
+        .navigationTitle("Library")
+        .searchable(text: $session.query, prompt: "Items, recipes, expeditions, and more")
+        .task(id: browseTaskID) {
+            await loadBrowse(reset: true)
+        }
+        .task(id: searchTaskID) {
+            await searchAfterDebounce()
+        }
+    }
+
+    private var packedProvenance: SourcePresentation {
+        .packed(model.packIdentity)
     }
 
     @ViewBuilder
     private var browseSection: some View {
+        @Bindable var session = session
         Section("Browse") {
             if isSampleDatabase {
                 VStack(alignment: .leading, spacing: 6) {
@@ -134,31 +134,31 @@ struct LibraryView: View {
                 .padding(.vertical, 4)
             }
 
-            Picker("Category", selection: $browsing) {
+            Picker("Category", selection: $session.browsing) {
                 ForEach(BrowseSection.allCases) { section in
                     Text(section.title).tag(section)
                 }
             }
             .pickerStyle(.menu)
 
-            if let browseError {
+            if let browseError = session.browseError {
                 Label(browseError, systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.secondary)
             }
 
-            ForEach(browseResults) { card in
+            ForEach(session.browseResults) { card in
                 resultRow(card)
             }
 
-            if isLoadingBrowse {
+            if session.isLoadingBrowse {
                 HStack {
                     Spacer()
                     ProgressView()
                     Spacer()
                 }
-            } else if browseResults.isEmpty && browseError == nil {
+            } else if session.browseResults.isEmpty && session.browseError == nil {
                 ContentUnavailableView(
-                    "No \(browsing.title)",
+                    "No \(session.browsing.title)",
                     systemImage: "tray",
                     description: Text(
                         isSampleDatabase
@@ -166,7 +166,7 @@ struct LibraryView: View {
                             : "This database has no records in this category."
                     )
                 )
-            } else if browseHasMore && browseError == nil {
+            } else if session.browseHasMore && session.browseError == nil {
                 Button("Load more") {
                     Task { await loadBrowse(reset: false) }
                 }
@@ -177,30 +177,31 @@ struct LibraryView: View {
 
     @ViewBuilder
     private var searchSection: some View {
+        @Bindable var session = session
         Section {
-            Picker("Search", selection: $searchScope) {
+            Picker("Search", selection: $session.searchScope) {
                 ForEach(SearchScope.allCases) { scope in
                     Text(scope.title).tag(scope)
                 }
             }
             .pickerStyle(.segmented)
 
-            if isSearching {
+            if session.isSearching {
                 HStack {
                     Spacer()
                     ProgressView("Searching Atlas…")
                     Spacer()
                 }
-            } else if let searchError {
+            } else if let searchError = session.searchError {
                 ContentUnavailableView(
                     "Search unavailable",
                     systemImage: "exclamationmark.magnifyingglass",
                     description: Text(searchError)
                 )
-            } else if results.isEmpty {
+            } else if session.results.isEmpty {
                 ContentUnavailableView.search(text: trimmedQuery)
             } else {
-                ForEach(results) { card in
+                ForEach(session.results) { card in
                     resultRow(card)
                 }
             }
@@ -215,22 +216,28 @@ struct LibraryView: View {
     private func resultRow(_ card: AtlasCard) -> some View {
         switch card {
         case .entity(let entity):
-            NavigationLink(value: AtlasRoute.entity(type: entity.entityType, id: entity.gameID)) {
-                EntityCardView(entity: entity)
+            AtlasOpenLink(
+                destination: .entity(type: entity.entityType, id: entity.gameID),
+                section: .library,
+                replacesPath: true
+            ) {
+                EntityCardView(entity: entity, provenance: packedProvenance)
             }
         case .recipe(let recipe):
-            NavigationLink(value: AtlasRoute.recipe(id: recipe.recipeID)) {
-                RecipeCardView(recipe: recipe)
+            AtlasOpenLink(destination: .recipe(id: recipe.recipeID), section: .library, replacesPath: true) {
+                RecipeCardView(recipe: recipe, provenance: packedProvenance)
             }
         case .content(let record):
-            NavigationLink(
-                value: AtlasRoute.content(
+            AtlasOpenLink(
+                destination: .content(
                     dataset: record.dataset,
                     id: record.externalID,
                     sourceOrdinal: record.sourceOrdinal
-                )
+                ),
+                section: .library,
+                replacesPath: true
             ) {
-                ContentCardView(record: record)
+                ContentCardView(record: record, provenance: packedProvenance)
             }
         case .web(let hit):
             Link(destination: hit.url) { WebCardView(hit: hit) }
@@ -238,92 +245,98 @@ struct LibraryView: View {
     }
 
     private var trimmedQuery: String {
-        query.trimmingCharacters(in: .whitespacesAndNewlines)
+        session.query.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var searchTaskID: String {
-        "\(searchScope.rawValue):\(trimmedQuery):\(model.pack?.generatedAt ?? "no-pack")"
+        "\(session.searchScope.rawValue):\(trimmedQuery):\(model.generationID):\(model.pack?.generatedAt ?? "no-pack")"
     }
 
     @MainActor
     private func searchAfterDebounce() async {
         guard !trimmedQuery.isEmpty else {
-            results = []
-            searchError = nil
-            isSearching = false
+            session.results = []
+            session.searchError = nil
+            session.isSearching = false
             return
         }
-        isSearching = true
-        searchError = nil
+        session.isSearching = true
+        session.searchError = nil
         do {
             try await Task.sleep(for: .milliseconds(250))
             try Task.checkCancellation()
-            try runSearch()
+            try await runSearch()
         } catch is CancellationError {
             return
         } catch {
-            results = []
-            searchError = error.localizedDescription
+            session.results = []
+            session.searchError = error.localizedDescription
         }
-        isSearching = false
+        session.isSearching = false
     }
 
     @MainActor
-    private func runSearch() throws {
-        guard let store = model.store else { return }
+    private func runSearch() async throws {
+        guard let catalog = model.catalog else {
+            throw CatalogError.unavailable
+        }
         var cards: [AtlasCard] = []
-        if searchScope == .all || searchScope == .items {
-            cards.append(contentsOf: try store.searchEntities(query: trimmedQuery, type: nil, limit: 30).map(AtlasCard.entity))
+        if session.searchScope == .all || session.searchScope == .items {
+            cards.append(contentsOf: try await catalog.searchEntities(query: trimmedQuery, type: nil, limit: 30).map(AtlasCard.entity))
         }
-        if searchScope == .all || searchScope == .recipes {
-            cards.append(contentsOf: try store.searchRecipes(query: trimmedQuery, kind: nil, limit: 30).map(AtlasCard.recipe))
+        if session.searchScope == .all || session.searchScope == .recipes {
+            cards.append(contentsOf: try await catalog.searchRecipes(query: trimmedQuery, kind: nil, limit: 30).map(AtlasCard.recipe))
         }
-        if searchScope == .all || searchScope == .categories {
-            cards.append(contentsOf: try store.searchContent(query: trimmedQuery, dataset: nil, limit: 20).map(AtlasCard.content))
+        if session.searchScope == .all || session.searchScope == .categories {
+            cards.append(contentsOf: try await catalog.searchContent(query: trimmedQuery, dataset: nil, limit: 20).map(AtlasCard.content))
         }
         var seen: Set<String> = []
-        results = cards.filter { seen.insert($0.id).inserted }
-        searchError = nil
+        session.results = cards.filter { seen.insert($0.id).inserted }
+        session.searchError = nil
     }
 
     @MainActor
     private func loadBrowse(reset: Bool) async {
-        guard !isLoadingBrowse, let store = model.store else { return }
-        isLoadingBrowse = true
-        defer { isLoadingBrowse = false }
+        guard let catalog = model.catalog else { return }
+        if session.isLoadingBrowse && !reset { return }
+        session.isLoadingBrowse = true
+        defer { session.isLoadingBrowse = false }
 
         if reset {
-            browseResults = []
-            browseOffset = 0
-            browseHasMore = true
+            session.browseResults = []
+            session.browseOffset = 0
+            session.browseHasMore = true
         }
 
         do {
             let page: [AtlasCard]
-            if let type = browsing.entityType {
-                page = try store.entities(type: type, limit: pageSize, offset: browseOffset).map(AtlasCard.entity)
-            } else if let kind = browsing.recipeKind {
-                page = try store.recipes(kind: kind, limit: pageSize, offset: browseOffset).map(AtlasCard.recipe)
-            } else if let dataset = browsing.contentDataset {
-                page = try store.contentRecords(
+            if let type = session.browsing.entityType {
+                page = try await catalog.entities(type: type, limit: pageSize, offset: session.browseOffset).map(AtlasCard.entity)
+            } else if let kind = session.browsing.recipeKind {
+                page = try await catalog.recipes(kind: kind, limit: pageSize, offset: session.browseOffset).map(AtlasCard.recipe)
+            } else if let dataset = session.browsing.contentDataset {
+                page = try await catalog.contentRecords(
                     dataset: dataset,
                     limit: pageSize,
-                    offset: browseOffset
+                    offset: session.browseOffset
                 ).map(AtlasCard.content)
             } else {
                 page = []
             }
-            browseResults.append(contentsOf: page)
-            browseOffset += page.count
-            browseHasMore = page.count == pageSize
-            browseError = nil
+            try Task.checkCancellation()
+            session.browseResults.append(contentsOf: page)
+            session.browseOffset += page.count
+            session.browseHasMore = page.count == pageSize
+            session.browseError = nil
+        } catch is CancellationError {
+            return
         } catch {
-            browseError = error.localizedDescription
+            session.browseError = error.localizedDescription
         }
     }
 
     private var browseTaskID: String {
-        "\(browsing.id):\(model.pack?.generatedAt ?? "no-pack")"
+        "\(session.browsing.id):\(model.generationID):\(model.pack?.generatedAt ?? "no-pack")"
     }
 
     private var packCounts: [String: Int] {

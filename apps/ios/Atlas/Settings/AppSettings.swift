@@ -6,22 +6,25 @@ final class AppSettings {
     static let webSearchKey = "webSearchEnabled"
     static let webSearchConfirmedKey = "webSearchConfirmed"
 
+    private let defaults: UserDefaults
+
     var liveAtlasEnabled: Bool {
-        didSet { UserDefaults.standard.set(liveAtlasEnabled, forKey: Self.liveAtlasKey) }
+        didSet { defaults.set(liveAtlasEnabled, forKey: Self.liveAtlasKey) }
     }
 
     var webSearchEnabled: Bool {
-        didSet { UserDefaults.standard.set(webSearchEnabled, forKey: Self.webSearchKey) }
+        didSet { defaults.set(webSearchEnabled, forKey: Self.webSearchKey) }
     }
 
     var webSearchConfirmed: Bool {
-        didSet { UserDefaults.standard.set(webSearchConfirmed, forKey: Self.webSearchConfirmedKey) }
+        didSet { defaults.set(webSearchConfirmed, forKey: Self.webSearchConfirmedKey) }
     }
 
-    init() {
-        liveAtlasEnabled = UserDefaults.standard.bool(forKey: Self.liveAtlasKey)
-        webSearchEnabled = UserDefaults.standard.bool(forKey: Self.webSearchKey)
-        webSearchConfirmed = UserDefaults.standard.bool(forKey: Self.webSearchConfirmedKey)
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        liveAtlasEnabled = defaults.bool(forKey: Self.liveAtlasKey)
+        webSearchEnabled = defaults.bool(forKey: Self.webSearchKey)
+        webSearchConfirmed = defaults.bool(forKey: Self.webSearchConfirmedKey)
     }
 
     var supabaseURL: URL? {
