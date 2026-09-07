@@ -179,4 +179,8 @@ struct AtlasMessage: Identifiable, Equatable {
     var text: String
     var cards: [AtlasCard] = []
     var note: String?
+    var followUps: [ClarificationChip] = []
+    var pendingActions: [PendingAction] = []
+    var refreshRequired: Bool = false
+    var packReleaseID: String?
 }

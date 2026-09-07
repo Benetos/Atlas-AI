@@ -29,16 +29,7 @@ struct RootView: View {
                 }
             )
         case .ready:
-            TabView {
-                AtlasView()
-                    .tabItem { Label("Atlas", systemImage: "sparkles") }
-                LibraryView()
-                    .tabItem { Label("Library", systemImage: "books.vertical") }
-                SavedView()
-                    .tabItem { Label("Saved", systemImage: "bookmark") }
-                InfoView()
-                    .tabItem { Label("Info", systemImage: "info.circle") }
-            }
+            AppShellView()
         }
     }
 }
@@ -81,6 +72,7 @@ struct PreparingAtlasView: View {
             if let retry {
                 Button("Try Again", action: retry)
                     .buttonStyle(.borderedProminent)
+                    .frame(minWidth: 44, minHeight: 44)
             }
         }
         .padding()

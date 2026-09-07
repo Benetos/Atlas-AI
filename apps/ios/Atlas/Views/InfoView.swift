@@ -4,8 +4,7 @@ struct InfoView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        NavigationStack {
-            Form {
+        Form {
                 Section("Local snapshot") {
                     LabeledContent(
                         "Database",
@@ -76,9 +75,9 @@ struct InfoView: View {
                 Section("On-device AI") {
                     LabeledContent(
                         "Apple system model",
-                        value: FoundationModelAvailability.current == .available ? "Available" : "Unavailable"
+                        value: model.services.modelAvailability.current == .available ? "Available" : "Unavailable"
                     )
-                    if FoundationModelAvailability.current == .unavailable {
+                    if model.services.modelAvailability.current == .unavailable {
                         Text("Grounded local search and cards still work. AI narration requires Apple’s on-device system model; Atlas never falls back to a cloud model.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
@@ -99,7 +98,6 @@ struct InfoView: View {
             .onChange(of: model.settings.liveAtlasEnabled) {
                 Task { await model.refreshLiveRevision() }
             }
-        }
     }
 
     private var liveAtlasBinding: Binding<Bool> {

@@ -588,6 +588,10 @@ is required.
 
 ## Delivery Plan
 
+This is a solo-developer project. The phases below are implementation order,
+not a requirement to open a pull request per phase. Land a slice on one branch
+off `main`; do not stack 1A / 1B / 2 review PRs.
+
 Effort below is engineering effort for one focused implementation stream and
 excludes App Store signing, physical-device release rehearsal, and the external
 publication/licensing decision. It is a sizing aid, not a release-date promise.

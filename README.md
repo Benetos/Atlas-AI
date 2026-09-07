@@ -24,6 +24,7 @@ into Supabase.
 
 ## Project package
 
+- [Agent notes](AGENTS.md) — solo-dev workflow; do not stack phase PRs
 - [Companion app contract](docs/APP.md)
 - [Companion app feature roadmap](docs/feature-roadmap-Atlas.md)
 - [Specialized experiences implementation plan](docs/SPECIALIZED_EXPERIENCES_PLAN.md)
