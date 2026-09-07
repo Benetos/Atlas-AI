@@ -67,22 +67,23 @@ actor AtlasConversationEngine {
     ) async -> ValidatedAssistantTurn {
         cancelledDuringResolution = false
         currentGeneration = request.generation
+        let queryPlan = await queryPlanner.plan(prompt: request.prompt)
         let policy = SourcePolicyDecision.decide(
-            plan: await queryPlanner.plan(prompt: request.prompt),
+            plan: queryPlan,
             snapshot: request.snapshot,
             receipts: request.receipts,
             turnID: request.turnID,
             now: request.clock.now()
         )
-        let queryPlan = await queryPlanner.plan(prompt: request.prompt)
         await ensureSession(
             packReleaseID: request.packIdentity.sourceCommitSHA,
             capabilityBundleID: policy.capabilityBundleID,
             packIdentity: request.packIdentity
         )
-        guard let ledger else {
-            return failClosed(request: request, notice: "Local data failed closed; Atlas did not substitute a network source.")
-        }
+        // Retrieval belongs to this question. Pending actions retain their own
+        // resolved evidence; previous search hits must not become this answer.
+        let ledger = EvidenceLedger(packIdentity: request.packIdentity)
+        self.ledger = ledger
 
         if !policy.allowsLocal {
             return failClosed(request: request, notice: "Local data failed closed; Atlas did not substitute a network source.")
@@ -109,14 +110,14 @@ actor AtlasConversationEngine {
                 return cancelledTurn(request: request)
             }
 
-            ingestAuthorizedExternal(
+            let externalIDs = ingestAuthorizedExternal(
                 request.external,
                 policy: policy,
                 queryPlan: queryPlan,
                 ledger: ledger
             )
 
-            var notices: [String] = []
+            var notices = collected.notices
             if queryPlan.requestsLive && !policy.authorizesLive {
                 if !policy.liveCapabilityEnabled {
                     notices.append("Live Atlas is off. Showing the installed pack only.")
@@ -137,7 +138,7 @@ actor AtlasConversationEngine {
                 notices.append("Ignored an injected outbound query.")
             }
 
-            let bundle = ledger.bundle(turnID: request.turnID)
+            let bundle = ledger.bundle(turnID: request.turnID, ids: collected.evidenceIDs + externalIDs)
             var usedFallback = false
             var proposed: ProposedTurnPlan
             if request.flags.modelProposedPlansEnabled,
@@ -258,6 +259,8 @@ actor AtlasConversationEngine {
         var entities: [Entity]
         var recipes: [Recipe]
         var content: [ContentRecord]
+        var evidenceIDs: [String]
+        var notices: [String]
     }
 
     private func collectLocal(
@@ -292,12 +295,20 @@ actor AtlasConversationEngine {
                     entities.append(contentsOf: rows)
                 }
                 entities = uniqueEntities(entities)
-                if entities.count >= ConversationBounds.answerEntityLimit { break }
+                if entities.contains(where: { plan.exactlyMatches($0) }) { break }
             }
         }
 
+        // Description matches help discovery, but an exact item name resolves
+        // the subject without promoting every mention of that item to a card.
+        if !plan.shouldBrowseEntities {
+            let exact = entities.filter { plan.exactlyMatches($0) }
+            if !exact.isEmpty { entities = exact }
+            entities = Array(entities.prefix(ConversationBounds.answerEntityLimit))
+        }
+
         var recipes: [Recipe] = []
-        if plan.shouldSearchRecipes, plan.goal != .uses {
+        if plan.shouldSearchRecipes, plan.goal != .uses, entities.isEmpty || plan.shouldBrowseRecipes {
             for query in plan.localSearchQueries {
                 let output = try await tools.invoke(
                     LocalToolCall(
@@ -318,7 +329,7 @@ actor AtlasConversationEngine {
             }
         }
 
-        if let first = entities.first {
+        if entities.count == 1, let first = entities.first {
             switch plan.goal {
             case .uses:
                 let output = try await tools.invoke(
@@ -370,9 +381,11 @@ actor AtlasConversationEngine {
             }
         }
 
-        if let quantity = RecipePlanIntent.quantity(from: plan.originalPrompt),
+        var derivedIDs: [String] = []
+        var notices: [String] = []
+        if let quantity = RecipePlanIntent.quantity(from: plan.originalPrompt), entities.count == 1,
            let first = entities.first {
-            _ = try await tools.invoke(
+            let output = try await tools.invoke(
                 LocalToolCall(
                     name: "plan_recipe",
                     entityType: first.entityType,
@@ -380,10 +393,15 @@ actor AtlasConversationEngine {
                     quantity: quantity
                 )
             )
+            if output.status == .ok {
+                derivedIDs = output.evidenceIDs
+            } else {
+                notices.append("I couldn't calculate the ingredient plan. Try opening the plan to review this item.")
+            }
         }
 
         var content: [ContentRecord] = []
-        if !plan.shouldBrowseRecipes {
+        if !plan.shouldBrowseRecipes, entities.isEmpty, recipes.isEmpty {
             for query in plan.localSearchQueries {
                 let output = try await tools.invoke(
                     LocalToolCall(
@@ -400,7 +418,13 @@ actor AtlasConversationEngine {
             }
         }
 
-        return CollectedLocal(entities: uniqueEntities(entities), recipes: recipes, content: content)
+        let selected: [EvidencePayload] = entities.map(EvidencePayload.entity)
+            + recipes.map(EvidencePayload.recipe) + content.map(EvidencePayload.content)
+        let evidenceIDs = selected.map { tools.database.ledger.issue(payload: $0, source: .packed).evidenceID }
+        return CollectedLocal(
+            entities: entities, recipes: recipes, content: content,
+            evidenceIDs: evidenceIDs + derivedIDs, notices: notices
+        )
     }
 
     private func ingestAuthorizedExternal(
@@ -408,21 +432,23 @@ actor AtlasConversationEngine {
         policy: SourcePolicyDecision,
         queryPlan: AtlasQueryPlan,
         ledger: EvidenceLedger
-    ) {
+    ) -> [String] {
         if let proposed = external.proposedOutboundQuery,
            !OutboundQuery.matchesUserDerived(proposed, plan: queryPlan) {
-            return
+            return []
         }
+        var ids: [String] = []
         if policy.authorizesLive {
             for entity in external.liveEntities {
-                _ = ledger.issue(payload: .entity(entity), source: .liveAtlas)
+                ids.append(ledger.issue(payload: .entity(entity), source: .liveAtlas).evidenceID)
             }
         }
         if policy.authorizesWeb {
             for hit in external.webHits {
-                _ = ledger.issue(payload: .web(hit), source: .communityWeb)
+                ids.append(ledger.issue(payload: .web(hit), source: .communityWeb).evidenceID)
             }
         }
+        return ids
     }
 
     private func ensureSession(

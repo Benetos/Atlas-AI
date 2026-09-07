@@ -8,10 +8,15 @@ struct RecipePlanIntent: Equatable, Sendable {
             !character.isLetter && !character.isNumber
         }.map(String.init)
         let triggers: Set<String> = ["need", "make", "craft", "plan", "want"]
+        let connectors: Set<String> = ["for", "of", "me", "a", "an", "to"]
         for index in tokens.indices {
             guard triggers.contains(tokens[index]), index + 1 < tokens.endIndex else { continue }
-            if let value = Int(tokens[index + 1]), ConversationBounds.quantityRange.contains(value) {
-                return value
+            for candidate in tokens[(index + 1)...].prefix(4) {
+                if connectors.contains(candidate) { continue }
+                if let value = Int(candidate), ConversationBounds.quantityRange.contains(value) {
+                    return value
+                }
+                break
             }
         }
         return nil
@@ -115,6 +120,19 @@ struct RecipePlanRecomputeDiff: Equatable, Sendable {
     var engineChanged: Bool
     var recipeMissing: Bool
 
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.missingLineIDs == rhs.missingLineIDs
+            && lhs.newLineIDs == rhs.newLineIDs
+            && lhs.packChanged == rhs.packChanged
+            && lhs.engineChanged == rhs.engineChanged
+            && lhs.recipeMissing == rhs.recipeMissing
+            && lhs.changedQuantities.count == rhs.changedQuantities.count
+            && lhs.changedQuantities.allSatisfy { key, value in
+                guard let other = rhs.changedQuantities[key] else { return false }
+                return value.was == other.was && value.now == other.now
+            }
+    }
+
     var hasChanges: Bool {
         packChanged || engineChanged || recipeMissing
             || !missingLineIDs.isEmpty || !newLineIDs.isEmpty || !changedQuantities.isEmpty
@@ -134,7 +152,7 @@ struct RecipePlanRecomputeDiff: Equatable, Sendable {
             newLineIDs: computed.checklist.map(\.id).filter { !oldIDs.contains($0) },
             changedQuantities: changed,
             packChanged: saved.packReleaseID != computed.packReleaseID,
-            engineChanged: saved.engineVersion != computed.engineVersion,
+            engineChanged: saved.engineVersion != ComputedRecipePlan.engineVersion,
             recipeMissing: computed.root.kind == .missingRecipe
         )
     }

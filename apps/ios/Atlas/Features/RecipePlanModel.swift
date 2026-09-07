@@ -50,13 +50,17 @@ final class RecipePlanModel {
         lastError = nil
         do {
             let quantity = try Quantity.checked(self.quantity)
+            // Older planners saved every automatic refining choice. Preview the
+            // new gathering defaults instead of treating those as user choices.
+            let engineChanged = savedRevision.map { $0.engineVersion != ComputedRecipePlan.engineVersion } ?? false
+            let requestedSelections = engineChanged ? [:] : selections
             var plan = try await RecipeGraphEngine().plan(
                 targetType: type,
                 targetID: id,
                 quantity: quantity,
                 packReleaseID: packIdentity?.sourceCommitSHA ?? "",
                 source: catalog.asRecipeGraphSource(),
-                selections: selections
+                selections: requestedSelections
             )
             try Task.checkCancellation()
             guard token == loadGeneration else { return }
@@ -73,7 +77,7 @@ final class RecipePlanModel {
                         quantity: savedRevision.quantity,
                         packReleaseID: packIdentity?.sourceCommitSHA ?? "",
                         source: catalog.asRecipeGraphSource(),
-                        selections: savedRevision.selections
+                        selections: engineChanged ? [:] : savedRevision.selections
                     )
                     try Task.checkCancellation()
                     guard token == loadGeneration else { return }
@@ -97,6 +101,7 @@ final class RecipePlanModel {
                 progress = SavedRecipePlan.transferredProgress(from: progress, onto: plan.checklist)
             } else {
                 selections = plan.selections
+                progress = SavedRecipePlan.transferredProgress(from: progress, onto: plan.checklist)
             }
             recomputePreview = nil
             recomputeDiff = nil

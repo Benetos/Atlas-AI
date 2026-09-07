@@ -48,6 +48,15 @@ struct AtlasQueryPlan: Equatable, Sendable {
 
     var shouldBrowseEntities: Bool { goal == .browseEntities }
 
+    func exactlyMatches(_ entity: Entity) -> Bool {
+        let names = [entity.title, entity.gameID].map(Self.normalizedName)
+        return localSearchQueries.contains { names.contains(Self.normalizedName($0)) }
+    }
+
+    private static func normalizedName(_ value: String) -> String {
+        tokens(in: value).map { $0.lowercased() }.joined(separator: " ")
+    }
+
     /// FTS5 intentionally uses strict AND matching. Keep that precision first,
     /// then try a conservative singular form so natural prompts such as
     /// "warp cells" can still find an item named "Warp Cell".
@@ -155,7 +164,7 @@ struct AtlasQueryPlan: Equatable, Sendable {
         "i", "in", "ingredient", "ingredients", "internet", "into", "is", "locate",
         "latest", "live", "look", "lookup", "made", "make", "making", "me",
         "my", "need", "newest", "now", "obtain", "of", "on", "online", "please",
-        "produce", "produced", "recent",
+        "produce", "produced", "recent", "plan", "want",
         "recipe", "recipes", "refine", "refined", "refiner", "refining", "search",
         "show", "tell", "the", "this", "to", "today", "up", "use", "used",
         "uses", "using", "web", "what", "where", "which", "wiki", "with", "would", "you",

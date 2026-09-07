@@ -354,6 +354,7 @@ final class RecipeGraphEngineTests: XCTestCase {
 
     func testRecipePlanIntentReadsNeedQuantity() {
         XCTAssertEqual(RecipePlanIntent.quantity(from: "I need 12 Circuit Boards"), 12)
+        XCTAssertEqual(RecipePlanIntent.quantity(from: "Give me a plan for 12 Circuit Boards"), 12)
         XCTAssertNil(RecipePlanIntent.quantity(from: "Circuit Board recipe"))
         XCTAssertNil(RecipePlanIntent.quantity(from: "I need 0 boards"))
     }
@@ -613,6 +614,14 @@ final class RecipeGraphEngineTests: XCTestCase {
         XCTAssertEqual(RecipePlanIntent.quantity(from: plan.originalPrompt), 12)
     }
 
+    func testPlanForQuantityKeepsOnlyTheItemInLocalSearch() {
+        let plan = AtlasQueryPlan(prompt: "Give me a plan for 12 Circuit Boards")
+        XCTAssertEqual(plan.source, .local)
+        XCTAssertEqual(plan.localQuery, "Circuit Boards")
+        XCTAssertEqual(plan.localSearchQueries, ["Circuit Boards", "circuit board"])
+        XCTAssertEqual(RecipePlanIntent.quantity(from: plan.originalPrompt), 12)
+    }
+
     func testNeedTwelveCircuitBoardsGroundedPlanWhenModelUnavailable() async {
         let catalog = FixtureNMSCatalog(
             identity: Self.pack,
@@ -655,8 +664,9 @@ final class RecipeGraphEngineTests: XCTestCase {
             proposedPlanner: DeterministicTurnPlanner()
         )
         XCTAssertTrue(turn.usedDeterministicFallback)
-        XCTAssertTrue(turn.text.contains("recipe-graph calculated 12"))
-        XCTAssertTrue(turn.text.contains("72× Carbon") || turn.text.contains("Gather 72×"))
+        XCTAssertTrue(turn.text.contains("Plan for 12× Circuit Board"))
+        XCTAssertTrue(turn.text.contains("72× Carbon"))
+        XCTAssertTrue(turn.text.contains("\n"))
         XCTAssertTrue(turn.note?.contains("Calculated from pack") == true)
         XCTAssertTrue(turn.cards.contains { card in
             guard case .entity(let entity) = card else { return false }
@@ -671,6 +681,292 @@ final class RecipeGraphEngineTests: XCTestCase {
         XCTAssertTrue(turn.followUps.contains { $0.label.contains("12") && $0.label.lowercased().contains("plan") })
         XCTAssertFalse(turn.text.localizedCaseInsensitiveContains("http"))
         XCTAssertFalse(turn.note?.localizedCaseInsensitiveContains("http") == true)
+    }
+
+    func testConsecutiveConversationTurnsKeepOnlyTheCurrentAnswer() async throws {
+        var catalog = Self.boardCatalog(
+            pack: Self.pack,
+            ingredientID: "C",
+            ingredientTitle: "Carbon",
+            amount: "6"
+        )
+        catalog.entities.append(contentsOf: [
+            Self.entity(type: "product", id: "F_DUST_EPIC_L1", title: "Ferrite Bowfin"),
+            Self.entity(type: "substance", id: "LAND1", title: "Ferrite Dust"),
+        ])
+        catalog.records = ["bait", "fish"].enumerated().map { index, dataset in
+            ContentRecord(
+                dataset: dataset,
+                externalID: "F_DUST_EPIC_L1",
+                sourceOrdinal: index,
+                displayName: "Ferrite Bowfin",
+                payload: "{}",
+                sourceCommitSHA: Self.pack.sourceCommitSHA
+            )
+        }
+
+        let plans = await assertConversationTurnsStayFocused(
+            catalog: catalog,
+            pack: Self.pack,
+            boardID: "A"
+        )
+        XCTAssertTrue(plans.twelve.text.contains("72× Carbon"))
+        XCTAssertTrue(plans.twentyFour.text.contains("144× Carbon"))
+        XCTAssertFalse(plans.twentyFour.text.contains("72× Carbon"))
+    }
+
+    func testEvidenceBundlesPreserveSelectedRelevanceAndExcludeResetRecords() throws {
+        let ledger = EvidenceLedger(packIdentity: Self.pack, snapshotID: "ordered-answer")
+        let board = ledger.issue(
+            payload: .entity(Self.entity(type: "product", id: "A", title: "Circuit Board")),
+            source: .packed
+        )
+        let fish = ledger.issue(
+            payload: .entity(Self.entity(type: "product", id: "F_DUST_EPIC_L1", title: "Ferrite Bowfin")),
+            source: .packed
+        )
+        _ = ledger.issue(payload: board.payload, source: .packed)
+        XCTAssertEqual(ledger.bundle(turnID: "first").evidenceIDs, [board.evidenceID, fish.evidenceID])
+
+        let rankedIDs = [board.evidenceID, fish.evidenceID].sorted(by: >)
+        let selection = ledger.bundle(turnID: "ranked", ids: rankedIDs + rankedIDs)
+        XCTAssertEqual(selection.evidenceIDs, rankedIDs)
+
+        ledger.reset(packIdentity: Self.pack)
+        XCTAssertTrue(ledger.bundle(turnID: "reset").records.isEmpty)
+        XCTAssertTrue(ledger.bundle(turnID: "old-selection", ids: rankedIDs).records.isEmpty)
+        XCTAssertThrowsError(try ledger.resolve(board.evidenceID)) { error in
+            XCTAssertEqual(error as? EvidenceError, .staleID(board.evidenceID))
+        }
+        let current = ledger.issue(payload: board.payload, source: .packed)
+        XCTAssertEqual(ledger.bundle(turnID: "new").evidenceIDs, [current.evidenceID])
+        XCTAssertEqual(
+            ledger.bundle(turnID: "mixed", ids: [fish.evidenceID, current.evidenceID, board.evidenceID]).evidenceIDs,
+            [current.evidenceID]
+        )
+    }
+
+    func testFullPackCircuitBoardPlanExcludesPriorFishAndBroadSearchMatches() async throws {
+        let url = try XCTUnwrap(
+            Bundle.main.url(forResource: "nms-reference", withExtension: "sqlite"),
+            "Hosted Atlas tests require the full generated app database."
+        )
+        let catalog = SQLiteNMSCatalog(store: try SQLiteNMSStore(fileURL: url), packRole: nil)
+        let pack = try await catalog.packIdentity()
+        _ = await assertConversationTurnsStayFocused(
+            catalog: catalog,
+            pack: pack,
+            boardID: "FARMPROD9"
+        )
+    }
+
+    func testFullPackCraftingRouteGathersFourCropsAndOnlySelectedAlternativeChangesTotals() async throws {
+        let url = try XCTUnwrap(Bundle.main.url(forResource: "nms-reference", withExtension: "sqlite"))
+        let catalog = SQLiteNMSCatalog(store: try SQLiteNMSStore(fileURL: url), packRole: nil)
+        let pack = try await catalog.packIdentity()
+        let source = catalog.asRecipeGraphSource()
+        let engine = RecipeGraphEngine()
+        let simple = try await engine.plan(
+            targetType: "product", targetID: "FARMPROD9", quantity: 12,
+            packReleaseID: pack.sourceCommitSHA, source: source
+        )
+        let crops = ["PLANT_SNOW": 1200, "PLANT_HOT": 2400, "PLANT_DUST": 1200, "PLANT_LUSH": 2400]
+        XCTAssertEqual(Dictionary(uniqueKeysWithValues: simple.checklist.map { ($0.gameID, $0.quantity) }), crops)
+        XCTAssertTrue(simple.cycles.isEmpty)
+        XCTAssertFalse(simple.truncated)
+        XCTAssertEqual(simple.root.selectedRecipeID, "crafting:product:FARMPROD9:0")
+        for crop in crops.keys {
+            XCTAssertEqual(simple.selections["entity:substance:\(crop)"], RecipeAlternative.gatherID)
+        }
+        XCTAssertEqual(Set(simple.alternatives.map(\.nodeID)), Set(simple.selections.keys))
+        let frost = try XCTUnwrap(simple.alternatives.first { $0.nodeID == "entity:substance:PLANT_SNOW" })
+        XCTAssertEqual(frost.quantity, 1200)
+        let refining = try XCTUnwrap(frost.recipes.first { $0.recipeID == "refining:substance:PLANT_SNOW:1" })
+        XCTAssertTrue(refining.ingredientSummary.contains("Dioxite"))
+        XCTAssertTrue(refining.ingredientSummary.contains("Oxygen"))
+        XCTAssertFalse(refining.ingredientSummary.contains("COLD1"))
+
+        var choices = simple.selections
+        choices["entity:substance:PLANT_SNOW"] = refining.recipeID
+        choices["entity:substance:UNUSED"] = "unused-route"
+        let alternate = try await engine.plan(
+            targetType: "product", targetID: "FARMPROD9", quantity: 12,
+            packReleaseID: pack.sourceCommitSHA, source: source, selections: choices
+        )
+        XCTAssertEqual(
+            Dictionary(uniqueKeysWithValues: alternate.checklist.map { ($0.gameID, $0.quantity) }),
+            ["COLD1": 2400, "OXYGEN": 1200, "PLANT_HOT": 2400, "PLANT_DUST": 1200, "PLANT_LUSH": 2400]
+        )
+        XCTAssertTrue(alternate.cycles.isEmpty)
+        XCTAssertNil(alternate.selections["entity:substance:UNUSED"])
+
+        choices = alternate.selections
+        choices["entity:substance:PLANT_SNOW"] = RecipeAlternative.gatherID
+        let restored = try await engine.plan(
+            targetType: "product", targetID: "FARMPROD9", quantity: 12,
+            packReleaseID: pack.sourceCommitSHA, source: source, selections: choices
+        )
+        XCTAssertEqual(Dictionary(uniqueKeysWithValues: restored.checklist.map { ($0.gameID, $0.quantity) }), crops)
+        XCTAssertFalse(restored.alternatives.contains { ["entity:substance:COLD1", "entity:substance:OXYGEN"].contains($0.nodeID) })
+        XCTAssertNil(restored.selections["entity:substance:COLD1"])
+        XCTAssertNil(restored.selections["entity:substance:OXYGEN"])
+    }
+
+    func testGatheringAnIntermediatePrunesItsOldRouteAndAlternativeRequirements() async throws {
+        let source = InMemoryRecipeGraphSource(
+            recipes: [
+                Self.recipe(id: "craft:A", outputType: "product", outputID: "A", outputAmount: "1", ingredients: [("product", "B", "2")]),
+                Self.recipe(id: "craft:B", outputType: "product", outputID: "B", outputAmount: "1", ingredients: [("substance", "C", "3")]),
+                Self.recipe(id: "refine:C", outputType: "substance", outputID: "C", outputAmount: "1", ingredients: [("substance", "D", "9")], kind: "refining"),
+            ],
+            titles: ["product:A": "Board", "product:B": "Component", "substance:C": "Carbon", "substance:D": "Oxygen"]
+        )
+        let plan = try await RecipeGraphEngine().plan(
+            targetType: "product", targetID: "A", quantity: 3, packReleaseID: "pack", source: source,
+            selections: ["entity:product:B": RecipeAlternative.gatherID, "entity:substance:C": "refine:C"]
+        )
+        XCTAssertEqual(plan.checklist.map(\.title), ["Component"])
+        XCTAssertEqual(plan.checklist.map(\.quantity), [6])
+        XCTAssertEqual(Set(plan.alternatives.map(\.nodeID)), ["entity:product:A", "entity:product:B"])
+        XCTAssertNil(plan.selections["entity:substance:C"])
+        XCTAssertFalse(plan.checklist.contains { $0.gameID == "D" })
+    }
+
+    func testRefiningLoopsRequireExplicitChoiceAndExposeReadableCycleNames() async throws {
+        let source = InMemoryRecipeGraphSource(
+            recipes: [
+                Self.recipe(id: "craft:A", outputType: "product", outputID: "A", outputAmount: "1", ingredients: [("substance", "B", "2")]),
+                Self.recipe(id: "refine:B", outputType: "substance", outputID: "B", outputAmount: "1", ingredients: [("substance", "C", "2")], kind: "refining"),
+                Self.recipe(id: "refine:C", outputType: "substance", outputID: "C", outputAmount: "1", ingredients: [("substance", "B", "2")], kind: "refining"),
+            ],
+            titles: ["product:A": "Circuit Board", "substance:B": "Frost Crystal", "substance:C": "Dioxite"]
+        )
+        let ordinary = try await RecipeGraphEngine().plan(
+            targetType: "product", targetID: "A", quantity: 1, packReleaseID: "pack", source: source
+        )
+        XCTAssertTrue(ordinary.cycles.isEmpty)
+        XCTAssertEqual(ordinary.checklist.map(\.title), ["Frost Crystal"])
+        XCTAssertEqual(ordinary.checklist.map(\.quantity), [2])
+        let selected = try await RecipeGraphEngine().plan(
+            targetType: "product", targetID: "A", quantity: 1, packReleaseID: "pack", source: source,
+            selections: ["entity:substance:B": "refine:B", "entity:substance:C": "refine:C"]
+        )
+        let cycle = try XCTUnwrap(selected.cycles.first)
+        XCTAssertEqual(cycle.pathTitles, ["Circuit Board", "Frost Crystal", "Dioxite", "Frost Crystal"])
+        XCTAssertTrue(selected.checklist.contains(where: \.isCycle))
+    }
+
+    private func assertConversationTurnsStayFocused(
+        catalog: any NMSCatalog,
+        pack: PackIdentity,
+        boardID: String
+    ) async -> (twelve: ValidatedAssistantTurn, twentyFour: ValidatedAssistantTurn) {
+        let engine = AtlasConversationEngine()
+        let fish = await reply("Ferrite Bowfin", generation: 1, engine: engine, catalog: catalog, pack: pack)
+        XCTAssertEqual(fish.cards.map(\.id), ["entity:product:F_DUST_EPIC_L1"])
+
+        let twelve = await reply(
+            "I need 12 Circuit Boards", generation: 2, engine: engine, catalog: catalog, pack: pack
+        )
+        assertFocusedPlan(twelve, boardID: boardID, quantity: 12)
+
+        let twentyFour = await reply(
+            "Give me a plan for 24 Circuit Boards", generation: 3, engine: engine, catalog: catalog, pack: pack
+        )
+        assertFocusedPlan(twentyFour, boardID: boardID, quantity: 24)
+        XCTAssertFalse(twentyFour.text.contains("Plan for 12×"))
+
+        let unknown = await reply(
+            "zzzxqvnonexistent", generation: 4, engine: engine, catalog: catalog, pack: pack
+        )
+        XCTAssertTrue(unknown.text.contains("do not have a local match"))
+        XCTAssertTrue(unknown.cards.isEmpty)
+        XCTAssertTrue(unknown.allowedActions.isEmpty)
+        XCTAssertTrue(unknown.pendingActions.isEmpty)
+        XCTAssertTrue(unknown.followUps.isEmpty)
+        XCTAssertFalse(unknown.note?.contains("Calculated from pack") == true)
+
+        let lookup = await reply(
+            "Ferrite Dust", generation: 5, engine: engine, catalog: catalog, pack: pack
+        )
+        XCTAssertEqual(lookup.cards.map(\.id), ["entity:substance:LAND1"])
+        XCTAssertTrue(lookup.text.contains("Ferrite Dust"))
+        XCTAssertFalse(lookup.text.contains("Plan for"))
+        XCTAssertFalse(lookup.text.contains("Circuit Board"))
+        XCTAssertFalse(lookup.note?.contains("Calculated from pack") == true)
+        XCTAssertTrue(lookup.pendingActions.isEmpty)
+        XCTAssertTrue(lookup.allowedActions.allSatisfy { action in
+            action.recordKeys.allSatisfy { $0 == .entity(type: "substance", id: "LAND1") }
+        })
+        XCTAssertFalse(lookup.followUps.contains { chip in
+            if case .plan(_, _, let quantity) = chip.intent { return quantity != 1 }
+            return false
+        })
+        return (twelve, twentyFour)
+    }
+
+    private func assertFocusedPlan(
+        _ turn: ValidatedAssistantTurn,
+        boardID: String,
+        quantity: Int,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertTrue(
+            turn.text.localizedCaseInsensitiveContains("plan for \(quantity)× Circuit Board"),
+            turn.text,
+            file: file,
+            line: line
+        )
+        XCTAssertFalse(turn.text.contains("Ferrite Bowfin"), file: file, line: line)
+        XCTAssertEqual(turn.cards.map(\.id), ["entity:product:\(boardID)"], file: file, line: line)
+        XCTAssertEqual(
+            turn.followUps.map(\.intent),
+            [.plan(type: "product", id: boardID, quantity: quantity)],
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(turn.pendingActions.isEmpty, file: file, line: line)
+        XCTAssertTrue(turn.allowedActions.allSatisfy { action in
+            action.recordKeys.allSatisfy { $0 == .entity(type: "product", id: boardID) }
+        }, file: file, line: line)
+        XCTAssertFalse(turn.allowedActions.contains { resolved in
+            if case .plan(_, _, let proposedQuantity) = resolved.action {
+                return proposedQuantity != quantity
+            }
+            return false
+        }, file: file, line: line)
+    }
+
+    private func reply(
+        _ prompt: String,
+        generation: UInt64,
+        engine: AtlasConversationEngine,
+        catalog: any NMSCatalog,
+        pack: PackIdentity
+    ) async -> ValidatedAssistantTurn {
+        await engine.reply(
+            ConversationTurnRequest(
+                prompt: prompt,
+                turnID: "turn-\(generation)",
+                generation: generation,
+                packIdentity: pack,
+                catalog: catalog,
+                snapshot: SourcePolicySnapshot(
+                    liveAtlasCapabilityEnabled: false,
+                    webSearchCapabilityEnabled: false,
+                    packAvailable: true
+                ),
+                receipts: [],
+                external: .empty,
+                flags: .enabled,
+                modelAvailability: .unavailable,
+                identifiers: UUIDIdentifierSource(),
+                clock: FixedClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+            ),
+            queryPlanner: DeterministicModelPlanner(),
+            proposedPlanner: DeterministicTurnPlanner()
+        )
     }
 
     @MainActor
@@ -790,6 +1086,56 @@ final class RecipeGraphEngineTests: XCTestCase {
         XCTAssertFalse(feature.isFrozen)
     }
 
+    @MainActor
+    func testOlderSavedRefiningRoutesPreviewGatheringDefaultsWithoutOverwritingOriginal() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("atlas-route-upgrade-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let clock = FixedClock(date: Date(timeIntervalSince1970: 1_800_000_000))
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "atlas.route-upgrade.\(UUID().uuidString)"))
+        let saved = SavedStore(artifacts: SavedArtifactsStore(directory: directory, clock: clock), defaults: defaults)
+        await saved.bootstrap()
+        var catalog = Self.boardCatalog(pack: Self.pack, ingredientID: "B", ingredientTitle: "Frost Crystal", amount: "2")
+        catalog.entities.append(Self.entity(type: "substance", id: "C", title: "Dioxite"))
+        catalog.recipes.append(Self.recipe(
+            id: "refine:B", outputType: "substance", outputID: "B", outputAmount: "1",
+            ingredients: [("substance", "C", "20")], kind: "refining"
+        ))
+        let oldPlan = try await RecipeGraphEngine().plan(
+            targetType: "product", targetID: "A", quantity: 12, packReleaseID: Self.pack.sourceCommitSHA,
+            source: catalog.asRecipeGraphSource(), selections: ["entity:substance:B": "refine:B"]
+        )
+        var original = SavedRecipePlan.from(
+            plan: oldPlan, id: "old-plan", revision: 1, predecessorID: nil, progress: [:], now: clock.now()
+        )
+        original.engineVersion = "1"
+        try await saved.upsertRecipePlan(original)
+        let model = RecipePlanModel(quantity: 12, artifactID: original.id)
+        await model.load(type: "product", id: "A", catalog: catalog, packIdentity: Self.pack, saved: saved)
+        XCTAssertTrue(model.isFrozen)
+        XCTAssertEqual(model.recomputeDiff?.engineChanged, true)
+        XCTAssertEqual(model.recomputePreview?.checklist.map(\.title), ["Frost Crystal"])
+        XCTAssertEqual(model.recomputePreview?.checklist.map(\.quantity), [24])
+        guard case .loaded(let frozen) = model.state else { return XCTFail("Expected saved checklist") }
+        XCTAssertEqual(frozen.checklist.map(\.title), ["Dioxite"])
+        XCTAssertEqual(frozen.checklist.map(\.quantity), [480])
+        XCTAssertEqual(saved.recipePlan(id: original.id), original)
+        await model.confirmRecompute(identifiers: UUIDIdentifierSource(), clock: clock, saved: saved)
+        XCTAssertFalse(model.isFrozen)
+        XCTAssertEqual(saved.recipePlans.count, 2)
+        XCTAssertEqual(saved.recipePlan(id: original.id), original)
+        XCTAssertEqual(model.savedRevision?.engineVersion, ComputedRecipePlan.engineVersion)
+        XCTAssertEqual(model.savedRevision?.checklist.map(\.title), ["Frost Crystal"])
+        XCTAssertEqual(model.savedRevision?.selections["entity:substance:B"], RecipeAlternative.gatherID)
+    }
+
+    func testOldCycleSnapshotsDecodeWithoutDisplayNames() throws {
+        let json = Data(#"{"nodeID":"entity:substance:B","path":["entity:product:A","entity:substance:B"]}"#.utf8)
+        let cycle = try JSONDecoder().decode(CycleNotice.self, from: json)
+        XCTAssertNil(cycle.pathTitles)
+        XCTAssertEqual(cycle.path.count, 2)
+    }
+
     private static func boardCatalog(
         pack: PackIdentity,
         ingredientID: String,
@@ -849,11 +1195,12 @@ final class RecipeGraphEngineTests: XCTestCase {
         outputType: String,
         outputID: String,
         outputAmount: String,
-        ingredients: [(String, String, String)]
+        ingredients: [(String, String, String)],
+        kind: String = "crafting"
     ) -> Recipe {
         Recipe(
             recipeID: id,
-            recipeKind: "crafting",
+            recipeKind: kind,
             outputEntityType: outputType,
             outputGameID: outputID,
             outputAmount: outputAmount,

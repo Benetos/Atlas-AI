@@ -481,6 +481,204 @@ final class Phase1BFoundationTests: XCTestCase {
         XCTAssertFalse(turn.followUps.contains(where: { $0.label.contains("http") }))
     }
 
+    func testRendererShowsClaimedResultsWithoutUnrelatedRetrievalCards() throws {
+        let ledger = EvidenceLedger(packIdentity: pack)
+        let ferrite = ledger.issue(payload: .entity(.phase1BFerrite), source: .packed)
+        var bowfin = Entity.phase1BFerrite
+        bowfin.entityType = "product"
+        bowfin.gameID = "FISH"
+        bowfin.displayName = "Ferrite Bowfin"
+        _ = ledger.issue(payload: .entity(bowfin), source: .packed)
+        _ = ledger.issue(payload: .recipe(.phase1BCarbon), source: .packed)
+        let claims = try ClaimValidator().validate(
+            plan: ProposedTurnPlan(
+                claims: [ProposedClaim(kind: .entityDescription, facts: [
+                    FactRef(evidenceID: ferrite.evidenceID, field: "description"),
+                ])],
+                followUps: [], actions: [], tone: nil
+            ),
+            ledger: ledger
+        )
+
+        let rendered = GroundedRenderer().render(
+            claims: claims, queryPlan: AtlasQueryPlan(prompt: "Ferrite Dust"),
+            bundle: ledger.bundle(turnID: "turn-1"), followUps: [], tone: nil,
+            notices: [], usedDeterministicFallback: true
+        )
+
+        XCTAssertEqual(rendered.cards.map(\.id), [AtlasCard.entity(.phase1BFerrite).id])
+        XCTAssertTrue(rendered.text.contains("A common metallic substance."))
+        XCTAssertFalse(rendered.text.contains("Bowfin"))
+    }
+
+    func testRendererDeduplicatesBeforeBrowsingLimitAndCount() throws {
+        let ledger = EvidenceLedger(packIdentity: pack)
+        let records = (0..<ConversationBounds.answerEntityLimit).map { index in
+            var entity = Entity.phase1BFerrite
+            entity.gameID = "SUBSTANCE_\(index)"
+            entity.displayName = "Substance \(index)"
+            return ledger.issue(payload: .entity(entity), source: .packed)
+        }
+        let claim = try ClaimValidator().validate(
+            claim: ProposedClaim(kind: .browseCount, facts: [
+                FactRef(evidenceID: records[0].evidenceID, field: "count"),
+            ]),
+            ledger: ledger
+        )
+        var bundle = ledger.bundle(turnID: "turn-1")
+        bundle.records = Array(repeating: records[0], count: ConversationBounds.answerEntityLimit) + records
+        let rendered = GroundedRenderer().render(
+            claims: [claim], queryPlan: AtlasQueryPlan(prompt: "Show all substances"),
+            bundle: bundle, followUps: [], tone: nil, notices: [], usedDeterministicFallback: true
+        )
+
+        XCTAssertEqual(rendered.cards.count, ConversationBounds.answerEntityLimit)
+        XCTAssertEqual(Set(rendered.cards.map(\.id)).count, ConversationBounds.answerEntityLimit)
+        XCTAssertTrue(rendered.text.contains("\(ConversationBounds.answerEntityLimit) substances"))
+    }
+
+    func testRendererAsksToChooseBetweenAmbiguousMatches() throws {
+        let ledger = EvidenceLedger(packIdentity: pack)
+        let ferrite = ledger.issue(payload: .entity(.phase1BFerrite), source: .packed)
+        var bowfin = Entity.phase1BFerrite
+        bowfin.entityType = "product"
+        bowfin.gameID = "FISH"
+        bowfin.displayName = "Ferrite Bowfin"
+        let fish = ledger.issue(payload: .entity(bowfin), source: .packed)
+        let claims = try [ferrite, fish].map { record in
+            try ClaimValidator().validate(
+                claim: ProposedClaim(kind: .entityExists, facts: [
+                    FactRef(evidenceID: record.evidenceID, field: "title"),
+                ]),
+                ledger: ledger
+            )
+        }
+        let rendered = GroundedRenderer().render(
+            claims: claims, queryPlan: AtlasQueryPlan(prompt: "Ferrite"),
+            bundle: ledger.bundle(turnID: "turn-1"), followUps: [], tone: nil,
+            notices: [], usedDeterministicFallback: true
+        )
+
+        XCTAssertEqual(rendered.text, "I found a few matching items. Choose the one you mean.")
+        XCTAssertEqual(rendered.cards.map(\.id), [AtlasCard.entity(.phase1BFerrite).id, AtlasCard.entity(bowfin).id])
+    }
+
+    func testRendererShowsPlanTargetAndMultilineChecklistWithoutHelperCards() throws {
+        let ledger = EvidenceLedger(packIdentity: pack)
+        var circuit = Entity.phase1BFerrite
+        circuit.entityType = "product"
+        circuit.gameID = "CIRCUIT"
+        circuit.displayName = "Circuit Board"
+        let target = ledger.issue(payload: .entity(circuit), source: .packed)
+        let helper = ledger.issue(payload: .entity(.phase1BFerrite), source: .packed)
+        var bowfin = circuit
+        bowfin.gameID = "FISH"
+        bowfin.displayName = "Ferrite Bowfin"
+        let unrelated = ledger.issue(payload: .entity(bowfin), source: .packed)
+        let plan = ledger.issue(
+            payload: .derived(rendererPlanEvidence(inputs: [
+                "target": circuit.id,
+                "targetTitle": circuit.title,
+                "rootKind": "crafted",
+                "checklistSummary": "2400× Frost Crystal; 1200× Solanium",
+            ])),
+            source: .calculated
+        )
+        let claims = try ClaimValidator().validate(
+            plan: ProposedTurnPlan(
+                claims: [
+                    ProposedClaim(kind: .entityExists, facts: [FactRef(evidenceID: helper.evidenceID, field: "title")]),
+                    ProposedClaim(kind: .derivedTotal, facts: [FactRef(evidenceID: plan.evidenceID, field: "output", quantity: 12)]),
+                ],
+                followUps: [], actions: [], tone: nil
+            ),
+            ledger: ledger
+        )
+        var bundle = ledger.bundle(turnID: "turn-1")
+        bundle.records = [unrelated, helper, target, unrelated, target, plan]
+        let followUp = FollowUpIntent.plan(type: "product", id: "CIRCUIT", quantity: 12)
+        let rendered = GroundedRenderer().render(
+            claims: claims, queryPlan: AtlasQueryPlan(prompt: "I need 12 Circuit Boards"),
+            bundle: bundle, followUps: [followUp, followUp], tone: nil,
+            notices: [], usedDeterministicFallback: true
+        )
+
+        XCTAssertEqual(rendered.text, "Plan for 12× Circuit Board\n\nGather:\n• 2400× Frost Crystal\n• 1200× Solanium")
+        XCTAssertEqual(rendered.cards.map(\.id), [AtlasCard.entity(circuit).id])
+        XCTAssertEqual(rendered.chips.count, 1)
+        XCTAssertFalse(rendered.text.contains("recipe-graph"))
+        XCTAssertTrue(rendered.note?.contains("Calculated from pack") == true)
+    }
+
+    func testRendererKeepsPartialPlanCaveatsAndWorksWithoutTargetCard() throws {
+        let ledger = EvidenceLedger(packIdentity: pack)
+        let evidence = ledger.issue(
+            payload: .derived(rendererPlanEvidence(inputs: [
+                "target": "product:CIRCUIT", "targetTitle": "Circuit Board", "rootKind": "crafted",
+                "checklistSummary": "24× Intermediate Part", "truncated": "true", "cycleCount": "1",
+                "notices": "Selected recipe is not in this snapshot.\nSelected recipe is not in this snapshot.",
+            ])),
+            source: .calculated
+        )
+        let claim = try ClaimValidator().validate(
+            claim: ProposedClaim(kind: .derivedTotal, facts: [
+                FactRef(evidenceID: evidence.evidenceID, field: "output", quantity: 12),
+            ]),
+            ledger: ledger
+        )
+        let rendered = GroundedRenderer().render(
+            claims: [claim], queryPlan: AtlasQueryPlan(prompt: "I need 12 Circuit Boards"),
+            bundle: ledger.bundle(turnID: "turn-1"), followUps: [], tone: nil,
+            notices: [], usedDeterministicFallback: true
+        )
+
+        XCTAssertTrue(rendered.text.hasPrefix("Partial plan for 12× Circuit Board"))
+        XCTAssertTrue(rendered.text.contains("\n• 24× Intermediate Part"))
+        XCTAssertTrue(rendered.cards.isEmpty)
+        XCTAssertTrue(rendered.note?.contains("Some listed items may still be craftable") == true)
+        XCTAssertTrue(rendered.note?.contains("recipes loop back") == true)
+        XCTAssertEqual(rendered.note?.components(separatedBy: "Selected recipe is not in this snapshot.").count, 2)
+    }
+
+    func testRendererDoesNotPresentMissingRecipeAsIngredientChecklist() throws {
+        for rootKind in ["leaf", "missingRecipe"] {
+            let ledger = EvidenceLedger(packIdentity: pack)
+            let evidence = ledger.issue(
+                payload: .derived(rendererPlanEvidence(inputs: [
+                    "target": "product:CIRCUIT", "targetTitle": "Circuit Board",
+                    "rootKind": rootKind, "checklistSummary": "12× Circuit Board",
+                ])),
+                source: .calculated
+            )
+            let claim = try ClaimValidator().validate(
+                claim: ProposedClaim(kind: .derivedTotal, facts: [
+                    FactRef(evidenceID: evidence.evidenceID, field: "output", quantity: 12),
+                ]),
+                ledger: ledger
+            )
+            let rendered = GroundedRenderer().render(
+                claims: [claim], queryPlan: AtlasQueryPlan(prompt: "I need 12 Circuit Boards"),
+                bundle: ledger.bundle(turnID: "turn-1"), followUps: [], tone: nil,
+                notices: [], usedDeterministicFallback: true
+            )
+
+            XCTAssertTrue(rendered.text.contains("12× Circuit Board"))
+            XCTAssertFalse(rendered.text.contains("Gather:"))
+            XCTAssertTrue(rendered.text.contains(rootKind == "leaf" ? "no recipe" : "selected recipe"))
+        }
+    }
+
+    private func rendererPlanEvidence(inputs: [String: String]) -> DerivedEvidence {
+        DerivedEvidence.make(
+            engineName: ComputedRecipePlan.engineName,
+            engineVersion: ComputedRecipePlan.engineVersion,
+            normalizedInputs: inputs,
+            parentEvidenceIDs: [],
+            packReleaseID: pack.sourceCommitSHA,
+            output: "12"
+        )
+    }
+
     func testCancellationDuringResolutionDropsTheTurn() async {
         let hanging = HangingCatalog(identity: pack, entities: [.phase1BFerrite])
         let engine = AtlasConversationEngine()

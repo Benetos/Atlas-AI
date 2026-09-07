@@ -23,10 +23,13 @@ enum RecipeGraphError: Error, Equatable, LocalizedError, Sendable {
 }
 
 struct RecipeAlternative: Equatable, Sendable, Hashable, Identifiable {
+    static let gatherID = "__gather__"
+
     var recipeID: String
     var recipeKind: String
     var title: String
     var outputAmount: Int
+    var ingredientSummary: String = ""
 
     var id: String { recipeID }
 }
@@ -35,6 +38,7 @@ struct NodeAlternatives: Equatable, Sendable, Hashable, Identifiable {
     var nodeID: String
     var title: String
     var recipes: [RecipeAlternative]
+    var quantity: Int = 1
 
     var id: String { nodeID }
 }
@@ -42,6 +46,7 @@ struct NodeAlternatives: Equatable, Sendable, Hashable, Identifiable {
 struct CycleNotice: Equatable, Sendable, Hashable, Codable {
     var nodeID: String
     var path: [String]
+    var pathTitles: [String]? = nil
 }
 
 struct ChecklistLine: Equatable, Sendable, Hashable, Identifiable, Codable {
@@ -81,7 +86,7 @@ struct PlanNode: Equatable, Sendable, Hashable, Identifiable {
 
 struct ComputedRecipePlan: Equatable, Sendable {
     static let engineName = "recipe-graph"
-    static let engineVersion = "1"
+    static let engineVersion = "2"
 
     var planID: String
     var packReleaseID: String
@@ -106,7 +111,13 @@ struct ComputedRecipePlan: Equatable, Sendable {
             engineVersion: Self.engineVersion,
             normalizedInputs: [
                 "target": "\(targetType):\(targetID)",
+                "targetTitle": targetTitle,
                 "quantity": String(quantity),
+                "rootKind": root.kind.rawValue,
+                "rootChoice": selections["entity:\(targetType):\(targetID)"] ?? "",
+                "notices": notices.joined(separator: "\n"),
+                "truncated": String(truncated),
+                "cycleCount": String(cycles.count),
                 "selections": selections.keys.sorted().map { "\($0)=\(selections[$0] ?? "")" }.joined(separator: ","),
                 "checklist": checklist.map { "\($0.id)=\($0.quantity)" }.joined(separator: ";"),
                 "checklistSummary": checklist.map { "\($0.quantity)× \($0.title)" }.joined(separator: "; "),
@@ -213,7 +224,7 @@ struct RecipeGraphEngine: Sendable {
     ) async throws -> ComputedRecipePlan {
         let quantity = try Quantity.checked(quantity)
         let started = clock()
-        var state = ExpansionState(selections: selections)
+        var state = ExpansionState(requestedSelections: selections)
 
         let title = try await source.entityTitle(type: targetType, id: targetID)
         let root = try await expand(
@@ -222,6 +233,7 @@ struct RecipeGraphEngine: Sendable {
             title: title,
             quantity: quantity,
             path: [],
+            pathTitles: [],
             depth: 0,
             source: source,
             started: started,
@@ -270,7 +282,9 @@ struct RecipeGraphEngine: Sendable {
     }
 
     private struct ExpansionState {
-        var selections: [String: String]
+        var requestedSelections: [String: String]
+        var selections: [String: String] = [:]
+        var titles: [String: String] = [:]
         var alternatives: [String: NodeAlternatives] = [:]
         var leaves: [String: ChecklistLine] = [:]
         var cycles: [CycleNotice] = []
@@ -285,6 +299,7 @@ struct RecipeGraphEngine: Sendable {
         title: String,
         quantity: Int,
         path: [String],
+        pathTitles: [String],
         depth: Int,
         source: any RecipeGraphSource,
         started: TimeInterval,
@@ -297,9 +312,14 @@ struct RecipeGraphEngine: Sendable {
         state.visitedNodes += 1
         let nodeID = "entity:\(type):\(id)"
         let pathID = (path + [nodeID]).joined(separator: ">")
+        state.titles[nodeID] = title
 
         if path.contains(nodeID) {
-            state.cycles.append(CycleNotice(nodeID: nodeID, path: path + [nodeID]))
+            state.cycles.append(CycleNotice(
+                nodeID: nodeID,
+                path: path + [nodeID],
+                pathTitles: pathTitles + [title]
+            ))
             try addLeaf(
                 type: type,
                 id: id,
@@ -374,20 +394,65 @@ struct RecipeGraphEngine: Sendable {
             )
         }
 
-        let alts = producing.map { recipe in
-            RecipeAlternative(
-                recipeID: recipe.recipeID,
-                recipeKind: recipe.recipeKind,
-                title: recipe.title,
-                outputAmount: Self.parseAmount(recipe.outputAmount).value
+        if var existing = state.alternatives[nodeID] {
+            existing.quantity = try Quantity.sum(existing.quantity, quantity)
+            state.alternatives[nodeID] = existing
+        } else {
+            var alternatives: [RecipeAlternative] = []
+            for recipe in producing {
+                var ingredients: [String] = []
+                for ingredient in recipe.ingredients.sorted(by: { $0.position < $1.position }) {
+                    let ingredientTitle = try await resolvedTitle(for: ingredient, source: source, state: &state)
+                    let amount = Self.parseAmount(ingredient.amount).value
+                    ingredients.append("\(amount)× \(ingredientTitle)")
+                }
+                alternatives.append(RecipeAlternative(
+                    recipeID: recipe.recipeID,
+                    recipeKind: recipe.recipeKind,
+                    title: Self.alternativeTitle(for: recipe, outputTitle: title),
+                    outputAmount: Self.parseAmount(recipe.outputAmount).value,
+                    ingredientSummary: ingredients.joined(separator: " + ")
+                ))
+            }
+            state.alternatives[nodeID] = NodeAlternatives(
+                nodeID: nodeID,
+                title: title,
+                recipes: alternatives,
+                quantity: quantity
             )
         }
-        state.alternatives[nodeID] = NodeAlternatives(nodeID: nodeID, title: title, recipes: alts)
 
-        let selectedID = state.selections[nodeID] ?? producing[0].recipeID
+        // Craft intermediates by default; refining and cooking are opt-in ways to
+        // obtain ingredients, not an instruction to expand every resource chain.
+        let defaultID = producing.first(where: { $0.recipeKind == "crafting" })?.recipeID
+            ?? (depth == 0 ? producing[0].recipeID : RecipeAlternative.gatherID)
+        let selectedID = state.requestedSelections[nodeID] ?? defaultID
         state.selections[nodeID] = selectedID
+        if selectedID == RecipeAlternative.gatherID {
+            try addLeaf(
+                type: type,
+                id: id,
+                title: title,
+                quantity: quantity,
+                isCycle: false,
+                isTruncated: false,
+                state: &state
+            )
+            return PlanNode(
+                entityType: type,
+                gameID: id,
+                title: title,
+                quantity: quantity,
+                kind: .leaf,
+                selectedRecipeID: nil,
+                outputPerCraft: nil,
+                crafts: nil,
+                children: [],
+                pathID: pathID
+            )
+        }
         guard let recipe = producing.first(where: { $0.recipeID == selectedID }) else {
-            state.notices.append("Selected recipe is not in this snapshot.")
+            state.notices.append("The selected recipe for \(title) is not in this snapshot.")
             try addLeaf(
                 type: type,
                 id: id,
@@ -413,7 +478,7 @@ struct RecipeGraphEngine: Sendable {
 
         let parsedOutput = Self.parseAmount(recipe.outputAmount)
         if let warning = parsedOutput.warning {
-            state.notices.append("\(recipe.title): \(warning)")
+            state.notices.append("\(title): \(warning)")
         }
         guard parsedOutput.value >= 1 else {
             throw RecipeGraphError.invalidOutputAmount(recipe.recipeID)
@@ -427,13 +492,14 @@ struct RecipeGraphEngine: Sendable {
                 state.notices.append("\(ingredient.title ?? ingredient.gameID): \(warning)")
             }
             let needed = try Quantity.product(parsedIngredient.value, crafts)
-            let childTitle = try await source.entityTitle(type: ingredient.entityType, id: ingredient.gameID)
+            let childTitle = try await resolvedTitle(for: ingredient, source: source, state: &state)
             let child = try await expand(
                 type: ingredient.entityType,
                 id: ingredient.gameID,
                 title: childTitle,
                 quantity: needed,
                 path: path + [nodeID],
+                pathTitles: pathTitles + [title],
                 depth: depth + 1,
                 source: source,
                 started: started,
@@ -464,8 +530,41 @@ struct RecipeGraphEngine: Sendable {
         let rows = try await source.recipesProducing(type: type, id: id)
         let unique = Dictionary(grouping: rows, by: \.recipeID).compactMap { $0.value.first }
         return Array(
-            unique.sorted { $0.recipeID < $1.recipeID }.prefix(bounds.alternativesPerNode)
+            unique.sorted {
+                let leftIsCrafting = $0.recipeKind == "crafting"
+                let rightIsCrafting = $1.recipeKind == "crafting"
+                if leftIsCrafting != rightIsCrafting { return leftIsCrafting }
+                return $0.recipeID < $1.recipeID
+            }.prefix(bounds.alternativesPerNode)
         )
+    }
+
+    private func resolvedTitle(
+        for ingredient: RecipeIngredient,
+        source: any RecipeGraphSource,
+        state: inout ExpansionState
+    ) async throws -> String {
+        let key = "entity:\(ingredient.entityType):\(ingredient.gameID)"
+        if let title = state.titles[key] { return title }
+        let catalogTitle = try await source.entityTitle(type: ingredient.entityType, id: ingredient.gameID)
+        let providedTitle = ingredient.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title: String
+        if catalogTitle == ingredient.gameID, let providedTitle, !providedTitle.isEmpty {
+            title = providedTitle
+        } else {
+            title = catalogTitle
+        }
+        state.titles[key] = title
+        return title
+    }
+
+    private static func alternativeTitle(for recipe: Recipe, outputTitle: String) -> String {
+        switch recipe.recipeKind {
+        case "crafting": return "Craft \(outputTitle)"
+        case "refining": return "Refine \(outputTitle)"
+        case "cooking": return "Cook \(outputTitle)"
+        default: return "Make \(outputTitle)"
+        }
     }
 
     private func addLeaf(

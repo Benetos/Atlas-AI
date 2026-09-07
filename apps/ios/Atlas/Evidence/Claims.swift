@@ -6,6 +6,8 @@ enum ClaimKind: String, Equatable, Sendable, Hashable, CaseIterable {
     case recipeProduces
     case recipeUses
     case recipeRelated
+    case contentSummary
+    case webResult
     case browseCount
     case noMatch
     case derivedTotal
@@ -199,6 +201,8 @@ struct DeterministicTurnPlanner: ProposedTurnPlanning {
         let entities = bundle.records.filter { if case .entity = $0.payload { return true }; return false }
         let recipes = bundle.records.filter { if case .recipe = $0.payload { return true }; return false }
         let derived = bundle.records.filter { $0.isCalculated }
+        let content = bundle.records.filter { if case .content = $0.payload { return true }; return false }
+        let web = bundle.records.filter { if case .web = $0.payload { return true }; return false }
 
         if bundle.records.contains(where: { record in
             if case .derived(let evidence) = record.payload {
@@ -214,7 +218,7 @@ struct DeterministicTurnPlanner: ProposedTurnPlanning {
             )
         }
 
-        if entities.isEmpty && recipes.isEmpty && derived.isEmpty {
+        if entities.isEmpty && recipes.isEmpty && derived.isEmpty && content.isEmpty && web.isEmpty {
             var followUps: [FollowUpIntent] = []
             if queryPlan.requestsWeb {
                 followUps.append(.requestExternalSource(.web, query: queryPlan.externalQuery))
@@ -235,6 +239,43 @@ struct DeterministicTurnPlanner: ProposedTurnPlanning {
         var claims: [ProposedClaim] = []
         var actions: [GeneratedActionProposal] = []
         var followUps: [FollowUpIntent] = []
+
+        if let record = derived.first(where: {
+            if case .derived(let evidence) = $0.payload { return evidence.engineName == ComputedRecipePlan.engineName }
+            return false
+        }), case .derived(let evidence) = record.payload,
+           let quantity = Int(evidence.output),
+           let target = entities.first(where: {
+               if case .entity(let entity) = $0.payload {
+                   return evidence.normalizedInputs["target"] == "\(entity.entityType):\(entity.gameID)"
+               }
+               return false
+           }), case .entity(let entity) = target.payload {
+            return ProposedTurnPlan(
+                claims: [
+                    ProposedClaim(kind: .entityExists, facts: [FactRef(evidenceID: target.evidenceID, field: "title")]),
+                    ProposedClaim(kind: .derivedTotal, facts: [FactRef(evidenceID: record.evidenceID, field: "output", quantity: quantity)]),
+                ],
+                followUps: [.plan(type: entity.entityType, id: entity.gameID, quantity: quantity)],
+                actions: [.plan(type: entity.entityType, id: entity.gameID, quantity: quantity)],
+                tone: nil
+            )
+        }
+
+        // A broad match is a choice of subjects, not permission to calculate a
+        // plan or save the first item returned by search.
+        if entities.count > 1, !queryPlan.shouldBrowseEntities, !queryPlan.shouldBrowseRecipes,
+           !entities.contains(where: {
+               if case .entity(let entity) = $0.payload { return queryPlan.exactlyMatches(entity) }
+               return false
+           }) {
+            return ProposedTurnPlan(
+                claims: entities.prefix(4).map {
+                    ProposedClaim(kind: .entityExists, facts: [FactRef(evidenceID: $0.evidenceID, field: "title")])
+                },
+                followUps: [], actions: [], tone: nil
+            )
+        }
 
         if queryPlan.shouldBrowseRecipes || queryPlan.shouldBrowseEntities {
             if let first = (entities + recipes).first {
@@ -274,7 +315,6 @@ struct DeterministicTurnPlanner: ProposedTurnPlanning {
                 break
             }
             actions.append(.open(entityRecord.recordKey))
-            actions.append(.save(entityRecord.recordKey))
             followUps.append(.usesFor(type: entity.entityType, id: entity.gameID))
             followUps.append(.recipesFor(type: entity.entityType, id: entity.gameID))
             let planQuantity = RecipePlanIntent.quantity(from: prompt) ?? 1
@@ -306,12 +346,14 @@ struct DeterministicTurnPlanner: ProposedTurnPlanning {
             }
         }
 
-        if entities.count > 1 {
-            followUps.insert(
-                .clarifyRecord(keys: entities.prefix(4).map(\.recordKey)),
-                at: 0
-            )
+        if entities.isEmpty, recipes.isEmpty {
+            claims.append(contentsOf: content.prefix(ConversationBounds.answerContentLimit).map {
+                ProposedClaim(kind: .contentSummary, facts: [FactRef(evidenceID: $0.evidenceID, field: "title")])
+            })
         }
+        claims.append(contentsOf: web.map {
+            ProposedClaim(kind: .webResult, facts: [FactRef(evidenceID: $0.evidenceID, field: "title")])
+        })
 
         if queryPlan.requestsWeb {
             actions.append(.requestExternal(from: queryPlan))

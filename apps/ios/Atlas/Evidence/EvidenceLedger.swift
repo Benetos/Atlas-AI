@@ -215,6 +215,7 @@ final class EvidenceLedger: @unchecked Sendable {
     private var packReleaseID: String
     private var sourceCommitSHA: String
     private var records: [String: EvidenceRecord] = [:]
+    private var orderedIDs: [String] = []
     private var retainedIDs: Set<String> = []
 
     init(packIdentity: PackIdentity, snapshotID: String = UUID().uuidString) {
@@ -242,6 +243,7 @@ final class EvidenceLedger: @unchecked Sendable {
         packReleaseID = packIdentity.sourceCommitSHA
         sourceCommitSHA = packIdentity.sourceCommitSHA
         retainedIDs.removeAll()
+        orderedIDs.removeAll()
     }
 
     @discardableResult
@@ -280,6 +282,7 @@ final class EvidenceLedger: @unchecked Sendable {
             payload: payload
         )
         records[evidenceID] = record
+        orderedIDs.append(evidenceID)
         return record
     }
 
@@ -312,18 +315,18 @@ final class EvidenceLedger: @unchecked Sendable {
     func bundle(turnID: String, ids: [String]? = nil) -> EvidenceBundle {
         lock.lock()
         defer { lock.unlock() }
-        let selected: [EvidenceRecord]
-        if let ids {
-            selected = ids.compactMap { records[$0] }
-        } else {
-            selected = Array(records.values)
+        var seen: Set<String> = []
+        let selected = (ids ?? orderedIDs).compactMap { id -> EvidenceRecord? in
+            guard seen.insert(id).inserted,
+                  let record = records[id], record.snapshotID == snapshotID else { return nil }
+            return record
         }
         return EvidenceBundle(
             turnID: turnID,
             snapshotID: snapshotID,
             packReleaseID: packReleaseID,
             sourceCommitSHA: sourceCommitSHA,
-            records: selected.sorted { $0.evidenceID < $1.evidenceID }
+            records: selected
         )
     }
 

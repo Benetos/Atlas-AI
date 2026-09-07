@@ -32,19 +32,21 @@ struct GroundedRenderer: Sendable {
         notices: [String],
         usedDeterministicFallback _: Bool
     ) -> (text: String, cards: [AtlasCard], note: String?, chips: [ClarificationChip]) {
-        let entities = bundle.records.compactMap { record -> Entity? in
+        let planEvidence = recipePlanEvidence(in: claims)
+        let records = presentedRecords(claims: claims, queryPlan: queryPlan, bundle: bundle, planEvidence: planEvidence)
+        let entities = records.compactMap { record -> Entity? in
             if case .entity(let entity) = record.payload { return entity }
             return nil
         }
-        let recipes = bundle.records.compactMap { record -> Recipe? in
+        let recipes = records.compactMap { record -> Recipe? in
             if case .recipe(let recipe) = record.payload { return recipe }
             return nil
         }
-        let content = bundle.records.compactMap { record -> ContentRecord? in
+        let content = records.compactMap { record -> ContentRecord? in
             if case .content(let record) = record.payload { return record }
             return nil
         }
-        let web = bundle.records.compactMap { record -> WebHit? in
+        let web = records.compactMap { record -> WebHit? in
             if case .web(let hit) = record.payload { return hit }
             return nil
         }
@@ -54,8 +56,18 @@ struct GroundedRenderer: Sendable {
         cards.append(contentsOf: content.prefix(ConversationBounds.answerContentLimit).map(AtlasCard.content))
         cards.append(contentsOf: web.map(AtlasCard.web))
 
-        let text = factualText(claims: claims, queryPlan: queryPlan, entities: entities, recipes: recipes, cards: cards)
+        let text = factualText(
+            claims: claims,
+            queryPlan: queryPlan,
+            entities: entities,
+            recipes: recipes,
+            cards: cards,
+            planEvidence: planEvidence
+        )
         var noteParts = notices
+        if let planEvidence {
+            noteParts.append(contentsOf: planNotes(for: planEvidence))
+        }
         if let tone, !tone.isEmpty {
             // Tone may color the note, never replace factual sentences.
             noteParts.append(tone)
@@ -71,13 +83,16 @@ struct GroundedRenderer: Sendable {
         }
         noteParts.append(contentsOf: derivedNotes)
 
-        let chips = followUps.prefix(4).map { intent in
+        var seenIntents: Set<FollowUpIntent> = []
+        let chips = followUps.filter { seenIntents.insert($0).inserted }.prefix(4).map { intent in
             ClarificationChip(id: intentChipID(intent), label: intent.chipLabel, intent: intent)
         }
+        var seenNotes: Set<String> = []
+        noteParts = noteParts.filter { !$0.isEmpty && seenNotes.insert($0).inserted }
 
         return (
             text,
-            unique(cards),
+            cards,
             noteParts.isEmpty ? nil : noteParts.joined(separator: " "),
             chips
         )
@@ -88,12 +103,19 @@ struct GroundedRenderer: Sendable {
         queryPlan: AtlasQueryPlan,
         entities: [Entity],
         recipes: [Recipe],
-        cards: [AtlasCard]
+        cards: [AtlasCard],
+        planEvidence: DerivedEvidence?
     ) -> String {
         if claims.contains(where: { $0.kind == .packFailure }) {
             return "I could not read the installed Atlas pack."
         }
-        if claims.contains(where: { $0.kind == .noMatch }) || (entities.isEmpty && recipes.isEmpty && cards.isEmpty) {
+        if let planEvidence {
+            return recipePlanText(for: planEvidence, target: entities.first)
+        }
+        if let quantity = claims.first(where: { $0.kind == .derivedTotal })?.facts.compactMap(\.quantity).first {
+            return "The calculated total is \(quantity)."
+        }
+        if cards.isEmpty {
             return "I do not have a local match for that. Try a different item name, or enable web search for community sources."
         }
         if queryPlan.shouldBrowseRecipes {
@@ -105,15 +127,8 @@ struct GroundedRenderer: Sendable {
         if queryPlan.shouldBrowseEntities, let entityType = queryPlan.entityType {
             return "I found \(entities.count) \(Self.pluralName(for: entityType)) in the pinned Atlas snapshot."
         }
-        if let derived = claims.first(where: { $0.kind == .derivedTotal }),
-           let fact = derived.facts.first,
-           let quantity = fact.quantity,
-           let record = derived.records.first,
-           case .derived(let evidence) = record.payload {
-            if let summary = evidence.normalizedInputs["checklistSummary"], !summary.isEmpty {
-                return "\(evidence.engineName) calculated \(quantity) from the pinned Atlas snapshot. Gather \(summary)."
-            }
-            return "\(evidence.engineName) calculated \(quantity) from the pinned Atlas snapshot."
+        if entities.count > 1, !entities.contains(where: { queryPlan.exactlyMatches($0) }) {
+            return "I found a few matching items. Choose the one you mean."
         }
         if let entity = entities.first {
             let used = recipes.filter { recipe in
@@ -136,7 +151,110 @@ struct GroundedRenderer: Sendable {
                 return Self.lookupSummary(for: entity)
             }
         }
+        if let first = cards.first {
+            switch first {
+            case .content(let record):
+                return "I found \(record.title) in the installed data."
+            case .web:
+                return "Here are the web sources I found for your question."
+            case .entity, .recipe:
+                break
+            }
+        }
         return "I found \(cards.count) local result(s) in the pinned Atlas snapshot."
+    }
+
+    private func recipePlanEvidence(in claims: [ValidatedClaim]) -> DerivedEvidence? {
+        for claim in claims where claim.kind == .derivedTotal {
+            for fact in claim.facts where fact.field == "output" && fact.quantity != nil {
+                if let record = claim.records.first(where: { $0.evidenceID == fact.evidenceID }),
+                   case .derived(let evidence) = record.payload,
+                   evidence.engineName == ComputedRecipePlan.engineName {
+                    return evidence
+                }
+            }
+        }
+        return nil
+    }
+
+    private func presentedRecords(
+        claims: [ValidatedClaim],
+        queryPlan: AtlasQueryPlan,
+        bundle: EvidenceBundle,
+        planEvidence: DerivedEvidence?
+    ) -> [EvidenceRecord] {
+        guard !claims.contains(where: { $0.kind == .packFailure }) else { return [] }
+        let claimedRecords = claims.flatMap(\.records)
+        let candidates: [EvidenceRecord]
+        if let planEvidence {
+            // Ingredient lookups and alternative recipes support the calculation; the
+            // answer's card opens its target. The checklist presents its materials.
+            candidates = (claimedRecords + bundle.records).filter { record in
+                guard case .entity(let entity) = record.payload else { return false }
+                return entity.id == planEvidence.normalizedInputs["target"]
+            }
+        } else if claims.contains(where: { $0.kind == .browseCount }),
+                  queryPlan.shouldBrowseEntities || queryPlan.shouldBrowseRecipes {
+            candidates = bundle.records.filter { record in
+                switch record.payload {
+                case .entity(let entity):
+                    return queryPlan.shouldBrowseEntities
+                        && (queryPlan.entityType == nil || queryPlan.entityType == entity.entityType)
+                case .recipe(let recipe):
+                    return queryPlan.shouldBrowseRecipes
+                        && (queryPlan.recipeKind == nil || queryPlan.recipeKind == recipe.recipeKind)
+                case .content, .web, .derived:
+                    return false
+                }
+            } + claimedRecords.filter { record in
+                if case .web = record.payload { return true }
+                return false
+            }
+        } else {
+            candidates = claimedRecords
+        }
+
+        // Deduplicate before category limits so repeated claims or source copies
+        // cannot displace a distinct result or inflate the visible result count.
+        var seenKeys: Set<RecordKey> = []
+        return candidates.filter { seenKeys.insert($0.recordKey).inserted }
+    }
+
+    private func recipePlanText(for evidence: DerivedEvidence, target: Entity?) -> String {
+        let inputs = evidence.normalizedInputs
+        let title = target?.title ?? inputs["targetTitle"] ?? inputs["target"] ?? "this item"
+        let quantity = evidence.output
+        let rootKind = inputs["rootKind"]
+        if rootKind == PlanNodeKind.missingRecipe.rawValue {
+            return "I could not use the selected recipe for \(quantity)× \(title). Open the plan to choose another recipe."
+        }
+        if rootKind == PlanNodeKind.leaf.rawValue {
+            if inputs["rootChoice"] == RecipeAlternative.gatherID {
+                return "Gather \(quantity)× \(title) directly. This route has no crafting steps."
+            }
+            return "The installed data has no recipe for \(title). Obtain \(quantity)× \(title) directly; no ingredient breakdown is available."
+        }
+        let partial = inputs["truncated"] == "true" || (Int(inputs["cycleCount"] ?? "0") ?? 0) > 0
+        let heading = "\(partial ? "Partial plan" : "Plan") for \(quantity)× \(title)"
+        let lines = (inputs["checklistSummary"] ?? "").components(separatedBy: ";")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !lines.isEmpty else {
+            return "\(heading)\n\nNo ingredient checklist is available. Open the plan for details."
+        }
+        return "\(heading)\n\nGather:\n" + lines.map { "• \($0)" }.joined(separator: "\n")
+    }
+
+    private func planNotes(for evidence: DerivedEvidence) -> [String] {
+        let inputs = evidence.normalizedInputs
+        var notes = (inputs["notices"] ?? "").components(separatedBy: "\n").filter { !$0.isEmpty }
+        if inputs["truncated"] == "true" {
+            notes.append("The ingredient breakdown stopped before every crafting step could be expanded. Some listed items may still be craftable.")
+        }
+        if (Int(inputs["cycleCount"] ?? "0") ?? 0) > 0 {
+            notes.append("Some recipes loop back to an earlier ingredient. Those ingredients remain in the checklist; open the plan to choose another route.")
+        }
+        return notes
     }
 
     private func intentChipID(_ intent: FollowUpIntent) -> String {
@@ -154,11 +272,6 @@ struct GroundedRenderer: Sendable {
         case .plan(let type, let id, let quantity):
             return "plan:\(type):\(id):\(quantity)"
         }
-    }
-
-    private func unique(_ cards: [AtlasCard]) -> [AtlasCard] {
-        var seen: Set<String> = []
-        return cards.filter { seen.insert($0.id).inserted }
     }
 
     private static func lookupSummary(for entity: Entity) -> String {

@@ -11,6 +11,7 @@ struct RecipePlanView: View {
     var artifactID: String?
 
     @State private var feature: RecipePlanModel
+    @State private var expandedRouteIDs: Set<String> = []
 
     init(targetType: String, targetID: String, quantity: Int, artifactID: String? = nil) {
         self.targetType = targetType
@@ -53,70 +54,67 @@ struct RecipePlanView: View {
                     if let preview = feature.recomputePreview {
                         Section("New revision preview") {
                             ForEach(Array(preview.checklist.enumerated()), id: \.offset) { _, line in
-                                Text("\(line.quantity)× \(line.title)")
+                                Text("\(line.quantity.formatted())× \(line.title)")
                             }
                         }
                     }
                 }
-                Section("Target") {
-                    Stepper(value: $feature.quantity, in: ConversationBounds.quantityRange) {
-                        Text("Quantity \(feature.quantity)")
+                targetSection(plan)
+                Section {
+                    checklist(for: plan.checklist)
+                } header: {
+                    HStack {
+                        Text(feature.isFrozen ? "Saved gather list" : "Gather")
+                        Spacer()
+                        Text("\(checkedCount(plan.checklist)) of \(plan.checklist.count) checked")
                     }
-                    .frame(minHeight: 44)
-                    .disabled(feature.isFrozen)
-                    .onChange(of: feature.quantity) {
-                        guard !feature.isFrozen else { return }
-                        Task { await reload() }
-                    }
-                    SourceBadge(
-                        presentation: SourcePresentation(
-                            kind: .calculated,
-                            releaseLabel: plan.derivedEvidence.provenanceLabel
-                        ),
-                        expanded: true
-                    )
-                    if plan.truncated {
-                        Text("Expansion stopped at a planner bound.")
-                            .foregroundStyle(.secondary)
+                } footer: {
+                    if !feature.isFrozen {
+                        Text(plan.root.kind == .crafted
+                             ? "Gather these ingredients, then follow the steps below. Changing a method updates this list."
+                             : "Tap an item to mark it gathered. Changing a method updates this list.")
                     }
                 }
-                if !plan.notices.isEmpty {
-                    Section("Notes") {
-                        ForEach(Array(plan.notices.enumerated()), id: \.offset) { _, notice in
-                            Text(notice)
-                        }
-                    }
+                if !feature.isFrozen {
+                    makeSection(plan)
+                    routeSection(plan)
                 }
                 if !plan.cycles.isEmpty {
-                    Section("Cycles") {
+                    Section("Gather directly to finish this route") {
+                        Text("A selected recipe needs an ingredient that leads back to itself. Gather the marked ingredient directly to continue.")
+                            .foregroundStyle(.secondary)
                         ForEach(Array(plan.cycles.enumerated()), id: \.offset) { _, cycle in
-                            Text(cycle.path.joined(separator: " → "))
+                            Label(cycleSummary(cycle, plan: plan), systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
                                 .font(.footnote)
                         }
                     }
                 }
-                if !feature.isFrozen,
-                   !plan.alternatives.filter({ $0.recipes.count > 1 }).isEmpty {
-                    Section("Alternate routes") {
-                        ForEach(plan.alternatives.filter { $0.recipes.count > 1 }) { group in
-                            Picker(group.title, selection: selectionBinding(group.nodeID)) {
-                                ForEach(group.recipes) { recipe in
-                                    Text("\(recipe.title) (\(recipe.recipeKind))")
-                                        .tag(recipe.recipeID)
-                                }
-                            }
-                            .frame(minHeight: 44)
-                            .disabled(feature.isFrozen)
+                if plan.truncated || !plan.notices.isEmpty {
+                    Section("Plan notes") {
+                        if plan.truncated {
+                            Text("Some ingredients could not be expanded further. Gather the marked items directly, or choose another method.")
+                        }
+                        ForEach(Array(plan.notices.enumerated()), id: \.offset) { _, notice in
+                            Text(notice)
+                                .font(.footnote)
                         }
                     }
                 }
-                if !feature.isFrozen {
-                    Section("Dependencies") {
-                        PlanTreeRows(node: plan.root)
+                Section {
+                    if !feature.isFrozen {
+                        DisclosureGroup("Ingredient breakdown") {
+                            PlanTreeRows(node: plan.root)
+                        }
                     }
-                }
-                Section(feature.isFrozen ? "Saved checklist" : "Checklist") {
-                    checklist(for: plan.checklist)
+                    DisclosureGroup("Plan source") {
+                        SourceBadge(
+                            presentation: SourcePresentation(
+                                kind: .calculated,
+                                releaseLabel: plan.derivedEvidence.provenanceLabel
+                            ),
+                            expanded: true
+                        )
+                    }
                 }
             }
             .toolbar {
@@ -144,9 +142,162 @@ struct RecipePlanView: View {
 
     private var title: String {
         if case .loaded(let plan) = feature.state {
-            return "\(plan.quantity)× \(plan.targetTitle)"
+            return "\(plan.quantity.formatted())× \(plan.targetTitle)"
         }
         return "Plan"
+    }
+
+    private func targetSection(_ plan: ComputedRecipePlan) -> some View {
+        Section("Target") {
+            Stepper(value: $feature.quantity, in: ConversationBounds.quantityRange) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(plan.targetTitle)
+                        .font(.headline)
+                    Text("Quantity \(feature.quantity.formatted())")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(minHeight: 44)
+            .disabled(feature.isFrozen)
+            .onChange(of: feature.quantity) {
+                guard !feature.isFrozen else { return }
+                Task { await reload() }
+            }
+            if feature.isFrozen {
+                Text("Showing your saved route and gather list.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label(currentMethod(plan), systemImage: plan.root.kind == .crafted ? "hammer" : "shippingbox")
+                        .font(.subheadline.weight(.medium))
+                    Text(routeSummary(plan))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func makeSection(_ plan: ComputedRecipePlan) -> some View {
+        let steps = craftingSteps(plan)
+        if !steps.isEmpty {
+            Section("Then make") {
+                ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
+                    HStack(alignment: .top, spacing: 12) {
+                        Text("\(index + 1)")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(minWidth: 20)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("\(step.method) \(step.quantity.formatted())× \(step.title)")
+                                .font(.subheadline.weight(.semibold))
+                            Text("Use \(step.ingredientSummary)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if step.surplus > 0 {
+                                Text("Makes \(step.produced.formatted()) total; \(step.surplus.formatted()) left over.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Step \(index + 1). \(step.method) \(step.quantity.formatted()) \(step.title). Use \(step.ingredientSummary).")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func routeSection(_ plan: ComputedRecipePlan) -> some View {
+        let groups = routeGroups(plan)
+        if !groups.isEmpty {
+            Section {
+                ForEach(groups) { group in
+                    DisclosureGroup(isExpanded: routeExpansionBinding(group.nodeID)) {
+                        routeOption(
+                            title: "Gather directly",
+                            detail: "Add \(group.quantity.formatted())× \(group.title) to the gather list.",
+                            recipeID: RecipeAlternative.gatherID,
+                            group: group,
+                            plan: plan
+                        )
+                        ForEach(group.recipes) { recipe in
+                            routeOption(
+                                title: methodName(recipe.recipeKind),
+                                detail: recipe.ingredientSummary.isEmpty ? "Ingredient details unavailable." : "Use \(recipe.ingredientSummary)",
+                                outputSummary: "Makes \(recipe.outputAmount.formatted())× \(group.title) per batch",
+                                recipeID: recipe.recipeID,
+                                group: group,
+                                plan: plan
+                            )
+                        }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("How to get \(group.title)")
+                                .font(.subheadline)
+                            Text("\(selectedMethod(group, plan: plan)) · \(group.quantity.formatted()) needed")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(minHeight: 44, alignment: .leading)
+                    }
+                }
+            } header: {
+                Text("Change route")
+            } footer: {
+                Text("Choose one method for each item. Gather it directly, or make it from the ingredients shown.")
+            }
+        }
+    }
+
+    private func routeOption(
+        title: String,
+        detail: String,
+        outputSummary: String? = nil,
+        recipeID: String,
+        group: NodeAlternatives,
+        plan: ComputedRecipePlan
+    ) -> some View {
+        let selected = plan.selections[group.nodeID] == recipeID
+        return Button {
+            guard !selected else { return }
+            selectAlternative(nodeID: group.nodeID, recipeID: recipeID)
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(title)
+                            .font(.subheadline.weight(.semibold))
+                        if selected {
+                            Text("Selected")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let outputSummary {
+                        Text(outputSummary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(selected ? "Selected" : "Not selected")
+        .accessibilityHint("Updates the ingredients and steps for this plan")
     }
 
     @ViewBuilder
@@ -175,12 +326,15 @@ struct RecipePlanView: View {
             HStack {
                 Image(systemName: feature.progress[line.id] == true ? "checkmark.circle.fill" : "circle")
                 VStack(alignment: .leading) {
-                    Text("\(line.quantity)× \(line.title)")
+                    Text("\(line.quantity.formatted())× \(line.title)")
+                        .strikethrough(feature.progress[line.id] == true)
                     if line.isCycle {
-                        Text("Cycle").font(.caption).foregroundStyle(.secondary)
+                        Text("Gather directly · recipe loops back here")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                     if line.isTruncated {
-                        Text("Truncated").font(.caption).foregroundStyle(.secondary)
+                        Text("Gather directly · further ingredients unavailable")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 if !dynamicTypeSize.isAccessibilitySize {
@@ -190,6 +344,9 @@ struct RecipePlanView: View {
         }
         .buttonStyle(.plain)
         .frame(minHeight: 44)
+        .accessibilityLabel("\(line.quantity.formatted()) \(line.title)")
+        .accessibilityValue(feature.progress[line.id] == true ? "Gathered" : "Not gathered")
+        .accessibilityHint("Double tap to change gathered status")
 
         let link = AtlasOpenLink(
             destination: .entity(type: line.entityType, id: line.gameID),
@@ -198,6 +355,7 @@ struct RecipePlanView: View {
             Image(systemName: "chevron.forward")
                 .frame(minWidth: 44, minHeight: 44)
         }
+        .accessibilityLabel("About \(line.title)")
 
         if dynamicTypeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 8) {
@@ -212,24 +370,153 @@ struct RecipePlanView: View {
         }
     }
 
-    private func selectionBinding(_ nodeID: String) -> Binding<String> {
+    private func routeExpansionBinding(_ nodeID: String) -> Binding<Bool> {
         Binding(
-            get: { feature.selections[nodeID] ?? "" },
-            set: { recipeID in
-                Task {
-                    guard !feature.isFrozen, let catalog = model.catalog else { return }
-                    await feature.selectAlternative(
-                        nodeID: nodeID,
-                        recipeID: recipeID,
-                        type: targetType,
-                        id: targetID,
-                        catalog: catalog,
-                        packIdentity: model.packIdentity,
-                        saved: model.saved
-                    )
+            get: { expandedRouteIDs.contains(nodeID) },
+            set: { expanded in
+                if expanded {
+                    expandedRouteIDs.insert(nodeID)
+                } else {
+                    expandedRouteIDs.remove(nodeID)
                 }
             }
         )
+    }
+
+    private func selectAlternative(nodeID: String, recipeID: String) {
+        Task {
+            guard !feature.isFrozen, let catalog = model.catalog else { return }
+            await feature.selectAlternative(
+                nodeID: nodeID,
+                recipeID: recipeID,
+                type: targetType,
+                id: targetID,
+                catalog: catalog,
+                packIdentity: model.packIdentity,
+                saved: model.saved
+            )
+        }
+    }
+
+    private func checkedCount(_ lines: [ChecklistLine]) -> Int {
+        lines.filter { feature.progress[$0.id] == true }.count
+    }
+
+    private func routeSummary(_ plan: ComputedRecipePlan) -> String {
+        let itemCount = plan.checklist.count
+        let stepCount = craftingSteps(plan).count
+        let items = "\(itemCount) \(itemCount == 1 ? "item" : "items") to gather"
+        guard stepCount > 0 else { return items }
+        return "\(items) · \(stepCount) \(stepCount == 1 ? "step" : "steps")"
+    }
+
+    private func routeGroups(_ plan: ComputedRecipePlan) -> [NodeAlternatives] {
+        var groups: [NodeAlternatives] = []
+        var seen: Set<String> = []
+        func visit(_ node: PlanNode) {
+            let nodeID = "entity:\(node.entityType):\(node.gameID)"
+            if seen.insert(nodeID).inserted,
+               let group = plan.alternatives.first(where: { $0.nodeID == nodeID }) {
+                groups.append(group)
+            }
+            node.children.forEach(visit)
+        }
+        visit(plan.root)
+        return groups
+    }
+
+    private func currentMethod(_ plan: ComputedRecipePlan) -> String {
+        guard let group = plan.alternatives.first(where: { $0.nodeID == "entity:\(plan.targetType):\(plan.targetID)" }) else {
+            return "Gather the target directly"
+        }
+        let selected = plan.selections[group.nodeID]
+        if selected == RecipeAlternative.gatherID {
+            return "Gather the target directly"
+        }
+        guard let recipe = group.recipes.first(where: { $0.recipeID == selected }) else {
+            return "Gather the target directly"
+        }
+        return "\(methodName(recipe.recipeKind)) from the ingredients below"
+    }
+
+    private func selectedMethod(_ group: NodeAlternatives, plan: ComputedRecipePlan) -> String {
+        let selected = plan.selections[group.nodeID]
+        if selected == RecipeAlternative.gatherID { return "Selected: Gather" }
+        guard let recipe = group.recipes.first(where: { $0.recipeID == selected }) else {
+            return "Choose a method"
+        }
+        return "Selected: \(methodName(recipe.recipeKind))"
+    }
+
+    private func methodName(_ kind: String) -> String {
+        switch kind.lowercased() {
+        case "crafting", "craft": "Craft"
+        case "refining", "refine": "Refine"
+        case "cooking", "cook": "Cook"
+        default: "Make"
+        }
+    }
+
+    private func craftingSteps(_ plan: ComputedRecipePlan) -> [PlanCraftingStep] {
+        var steps: [PlanCraftingStep] = []
+        func visit(_ node: PlanNode) {
+            node.children.forEach(visit)
+            guard node.kind == .crafted else { return }
+            let stepID = "entity:\(node.entityType):\(node.gameID):\(node.selectedRecipeID ?? "")"
+            let recipe = plan.alternatives
+                .first { $0.nodeID == "entity:\(node.entityType):\(node.gameID)" }?
+                .recipes.first { $0.recipeID == node.selectedRecipeID }
+            let produced = (node.crafts ?? 1) * (node.outputPerCraft ?? node.quantity)
+            let ingredients = node.children.map {
+                PlanStepIngredient(id: "\($0.entityType):\($0.gameID)", title: $0.title, quantity: $0.quantity)
+            }
+            if let index = steps.firstIndex(where: { $0.id == stepID }) {
+                steps[index].quantity += node.quantity
+                steps[index].produced += produced
+                for ingredient in ingredients {
+                    if let ingredientIndex = steps[index].ingredients.firstIndex(where: { $0.id == ingredient.id }) {
+                        steps[index].ingredients[ingredientIndex].quantity += ingredient.quantity
+                    } else {
+                        steps[index].ingredients.append(ingredient)
+                    }
+                }
+            } else {
+                steps.append(PlanCraftingStep(
+                    id: stepID,
+                    title: node.title,
+                    quantity: node.quantity,
+                    produced: produced,
+                    method: methodName(recipe?.recipeKind ?? ""),
+                    ingredients: ingredients
+                ))
+            }
+        }
+        visit(plan.root)
+        return steps
+    }
+
+    private func cycleSummary(_ cycle: CycleNotice, plan: ComputedRecipePlan) -> String {
+        var titles: [String: String] = [:]
+        func visit(_ node: PlanNode) {
+            if node.title != node.gameID {
+                titles["entity:\(node.entityType):\(node.gameID)"] = node.title
+            }
+            node.children.forEach(visit)
+        }
+        visit(plan.root)
+        for line in plan.checklist where line.title != line.gameID {
+            titles["entity:\(line.entityType):\(line.gameID)"] = line.title
+        }
+        let names = cycle.path.enumerated().map { index, nodeID in
+            if let pathTitles = cycle.pathTitles, pathTitles.indices.contains(index) {
+                let title = pathTitles[index]
+                if !title.isEmpty, title != nodeID, title != nodeID.split(separator: ":").last.map(String.init) {
+                    return title
+                }
+            }
+            return titles[nodeID] ?? "Unavailable ingredient"
+        }
+        return names.joined(separator: " → ")
     }
 
     private func recomputeSummary(_ diff: RecipePlanRecomputeDiff) -> String {
@@ -260,6 +547,26 @@ struct RecipePlanView: View {
     }
 }
 
+private struct PlanStepIngredient {
+    var id: String
+    var title: String
+    var quantity: Int
+}
+
+private struct PlanCraftingStep: Identifiable {
+    var id: String
+    var title: String
+    var quantity: Int
+    var produced: Int
+    var method: String
+    var ingredients: [PlanStepIngredient]
+
+    var surplus: Int { max(0, produced - quantity) }
+    var ingredientSummary: String {
+        ingredients.map { "\($0.quantity.formatted())× \($0.title)" }.joined(separator: " + ")
+    }
+}
+
 private struct PlanTreeRows: View {
     var node: PlanNode
 
@@ -278,18 +585,27 @@ private struct PlanTreeRows: View {
     }
 
     private var row: some View {
-        HStack {
+        VStack(alignment: .leading, spacing: 4) {
             Text(label)
-            Spacer()
-            Text(node.kind.rawValue).font(.caption2).foregroundStyle(.secondary)
+            Text(methodLabel).font(.caption).foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .combine)
     }
 
     private var label: String {
         if let crafts = node.crafts {
-            return "\(node.quantity)× \(node.title) (\(crafts) crafts)"
+            return "\(node.quantity.formatted())× \(node.title) (\(crafts.formatted()) batches)"
         }
-        return "\(node.quantity)× \(node.title)"
+        return "\(node.quantity.formatted())× \(node.title)"
+    }
+
+    private var methodLabel: String {
+        switch node.kind {
+        case .crafted: "Make from the ingredients below"
+        case .leaf: "Gather directly"
+        case .cycle: "Gather directly · recipe loops back here"
+        case .truncated: "Gather directly · further ingredients unavailable"
+        case .missingRecipe: "Gather directly · selected recipe unavailable"
+        }
     }
 }
