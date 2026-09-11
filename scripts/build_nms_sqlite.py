@@ -10,13 +10,19 @@ import json
 import re
 import shutil
 import sqlite3
+import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+from project_nms_features import FEATURE_DDL, project_content_records
 
-PACK_SCHEMA_VERSION = 1
+
+PACK_SCHEMA_VERSION = 2
 SUPPORTED_CONTRACT_VERSION = 1
 REQUIRED_INPUTS = (
     "entities.csv",
@@ -302,6 +308,7 @@ def create_schema(connection: sqlite3.Connection) -> None:
           tokenize = 'porter unicode61'
         );
         """
+        + FEATURE_DDL
     )
 
 
@@ -581,6 +588,24 @@ def build_pack(
             content_count = insert_content(
                 connection, iter_csv_rows(import_dir / "content_records.csv")
             )
+            content_rows = [
+                {
+                    "dataset": row[0],
+                    "external_id": row[1],
+                    "source_ordinal": row[2],
+                    "display_name": row[3],
+                    "icon_source_path": row[4],
+                    "payload": row[5],
+                }
+                for row in connection.execute(
+                    """
+                    select dataset, external_id, source_ordinal,
+                           display_name, icon_source_path, payload
+                      from nms_content_records
+                    """
+                )
+            ]
+            project_content_records(connection, content_rows)
             counts = {
                 "entities": entity_count,
                 "localizations_preferred": localization_count,

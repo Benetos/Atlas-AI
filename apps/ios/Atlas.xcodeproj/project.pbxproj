@@ -8,6 +8,11 @@
 
 /* Begin PBXBuildFile section */
 		86BB24B13B26B9CE133F430D /* Phase1AFoundationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C674E506E8E7383CED5D473 /* Phase1AFoundationTests.swift */; };
+		2D8F1A9C4E6B7035D2A18F44 /* FeatureRecords.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91C4E8A2B7D04F1E9A3C6B50 /* FeatureRecords.swift */; };
+		7E4D2C1A9B805F63E7A1D4C8 /* PackedIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A7B9C1E5D824F60B1C4E8A2 /* PackedIcon.swift */; };
+		8B3E6A9D1C4F7025B8E1A3C7 /* SpecialistFeatureModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F2A8C1D4E9B7036A1C5D8E2 /* SpecialistFeatureModel.swift */; };
+		9A2F5C8E1D4B7063A7C1E8F4 /* SpecialistFeatureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C1D9E4A2B8F7031C5A7E9D3 /* SpecialistFeatureView.swift */; };
+		1E7C3A9F5D8B4026C1A4E9B3 /* FeatureProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D8A1C5E9B2F7036E1A4C8D2 /* FeatureProjectionTests.swift */; };
 		187F3D9BF85B5ACF12293935 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8657742E7740E48C9F7036AB /* AppModel.swift */; };
 		1C6435ECCA85E7646E29781E /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDAAC84C9EBDDBC3BA3DF533 /* LibraryView.swift */; };
 		1CE388F77F4D537087E737CC /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 9C4B8638775F9C594490E27D /* PrivacyInfo.xcprivacy */; };
@@ -165,6 +170,11 @@
 		C63F0E4A1D9F608C3E5B7F02 /* RecipePlanModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipePlanModel.swift; sourceTree = "<group>"; };
 		D7401F5B2E0A719D4F6C8013 /* RecipePlanView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipePlanView.swift; sourceTree = "<group>"; };
 		E851206C3F1B82AE507D9124 /* RecipeGraphEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeGraphEngineTests.swift; sourceTree = "<group>"; };
+		91C4E8A2B7D04F1E9A3C6B50 /* FeatureRecords.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureRecords.swift; sourceTree = "<group>"; };
+		3A7B9C1E5D824F60B1C4E8A2 /* PackedIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PackedIcon.swift; sourceTree = "<group>"; };
+		5F2A8C1D4E9B7036A1C5D8E2 /* SpecialistFeatureModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpecialistFeatureModel.swift; sourceTree = "<group>"; };
+		6C1D9E4A2B8F7031C5A7E9D3 /* SpecialistFeatureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpecialistFeatureView.swift; sourceTree = "<group>"; };
+		4D8A1C5E9B2F7036E1A4C8D2 /* FeatureProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureProjectionTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -198,6 +208,7 @@
 				8C674E506E8E7383CED5D473 /* Phase1AFoundationTests.swift */,
 				762AFB8CAED3123194ED369D /* Phase1BFoundationTests.swift */,
 				E851206C3F1B82AE507D9124 /* RecipeGraphEngineTests.swift */,
+				4D8A1C5E9B2F7036E1A4C8D2 /* FeatureProjectionTests.swift */,
 				90264F659BF01F6AB890BCAF /* AtlasTests.swift */,
 				67828BA08DAEC116C2662ABE /* Fixtures */,
 			);
@@ -217,6 +228,7 @@
 				FDAAC84C9EBDDBC3BA3DF533 /* LibraryView.swift */,
 				D149A922C4CF4E1037C57E5A /* RecipeDetailView.swift */,
 				D7401F5B2E0A719D4F6C8013 /* RecipePlanView.swift */,
+				6C1D9E4A2B8F7031C5A7E9D3 /* SpecialistFeatureView.swift */,
 				38E7F5DC787F849570FF40C4 /* SavedView.swift */,
 			);
 			path = Views;
@@ -311,6 +323,7 @@
 			isa = PBXGroup;
 			children = (
 				974A47803BE8A325693F5F4B /* NMSModels.swift */,
+				91C4E8A2B7D04F1E9A3C6B50 /* FeatureRecords.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -365,6 +378,7 @@
 			children = (
 				A577E4F56338B62ADBBCBE82 /* FeatureModels.swift */,
 				C63F0E4A1D9F608C3E5B7F02 /* RecipePlanModel.swift */,
+				5F2A8C1D4E9B7036A1C5D8E2 /* SpecialistFeatureModel.swift */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -374,6 +388,7 @@
 			children = (
 				E2A9FA0D836CCD4699391B8C /* LoadState.swift */,
 				B2F8D99BDF68E4CABB0AB17F /* SourcePresentation.swift */,
+				3A7B9C1E5D824F60B1C4E8A2 /* PackedIcon.swift */,
 			);
 			path = Presentation;
 			sourceTree = "<group>";
@@ -601,6 +616,10 @@
 				125B539F624EB5D183A0C457 /* RecipePlanModels.swift in Sources */,
 				236C64A0735FC6E294B1D568 /* RecipePlanModel.swift in Sources */,
 				347D75B18470D7F3A5C2E679 /* RecipePlanView.swift in Sources */,
+				2D8F1A9C4E6B7035D2A18F44 /* FeatureRecords.swift in Sources */,
+				7E4D2C1A9B805F63E7A1D4C8 /* PackedIcon.swift in Sources */,
+				8B3E6A9D1C4F7025B8E1A3C7 /* SpecialistFeatureModel.swift in Sources */,
+				9A2F5C8E1D4B7063A7C1E8F4 /* SpecialistFeatureView.swift in Sources */,
 				187F3D9BF85B5ACF12293935 /* AppModel.swift in Sources */,
 				2F8EC602ED13B3C08636A2DD /* AppSettings.swift in Sources */,
 				8A61946037B3DB00BDDD37F1 /* AtlasApp.swift in Sources */,
@@ -632,6 +651,7 @@
 				86BB24B13B26B9CE133F430D /* Phase1AFoundationTests.swift in Sources */,
 				D5F170F764B3752B5C5A52D5 /* Phase1BFoundationTests.swift in Sources */,
 				458E86C29581E804B6D3F78A /* RecipeGraphEngineTests.swift in Sources */,
+				1E7C3A9F5D8B4026C1A4E9B3 /* FeatureProjectionTests.swift in Sources */,
 				CD0476434D4B6F1578C6E90F /* AtlasTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -39,6 +39,27 @@ protocol NMSCatalog: Sendable {
     func entities(type: String, limit: Int, offset: Int) async throws -> [Entity]
     func recipes(kind: String?, limit: Int, offset: Int) async throws -> [Recipe]
     func contentRecords(dataset: String, limit: Int, offset: Int) async throws -> [ContentRecord]
+    func hasFeatureTables() async throws -> Bool
+    func specialistSummaries(_ query: SpecialistQuery) async throws -> [SpecialistSummary]
+    func specialistRecord(
+        feature: SpecialistFeature,
+        id: String,
+        sourceOrdinal: Int
+    ) async throws -> SpecialistDetail?
+    func specialistFilterOptions(feature: SpecialistFeature) async throws -> SpecialistFilterOptions
+}
+
+extension NMSCatalog {
+    func hasFeatureTables() async throws -> Bool { false }
+    func specialistSummaries(_ query: SpecialistQuery) async throws -> [SpecialistSummary] { [] }
+    func specialistRecord(
+        feature: SpecialistFeature,
+        id: String,
+        sourceOrdinal: Int
+    ) async throws -> SpecialistDetail? { nil }
+    func specialistFilterOptions(feature: SpecialistFeature) async throws -> SpecialistFilterOptions {
+        .empty
+    }
 }
 
 struct SQLiteNMSCatalog: NMSCatalog {
@@ -115,6 +136,26 @@ struct SQLiteNMSCatalog: NMSCatalog {
 
     func contentRecords(dataset: String, limit: Int, offset: Int) async throws -> [ContentRecord] {
         try await run { store in try store.contentRecords(dataset: dataset, limit: limit, offset: offset) }
+    }
+
+    func hasFeatureTables() async throws -> Bool {
+        try await run { store in try store.hasFeatureTables() }
+    }
+
+    func specialistSummaries(_ query: SpecialistQuery) async throws -> [SpecialistSummary] {
+        try await run { store in try store.specialistSummaries(query) }
+    }
+
+    func specialistRecord(
+        feature: SpecialistFeature,
+        id: String,
+        sourceOrdinal: Int
+    ) async throws -> SpecialistDetail? {
+        try await run { store in try store.specialistRecord(feature: feature, id: id, sourceOrdinal: sourceOrdinal) }
+    }
+
+    func specialistFilterOptions(feature: SpecialistFeature) async throws -> SpecialistFilterOptions {
+        try await run { store in try store.specialistFilterOptions(feature: feature) }
     }
 
     private func run<T: Sendable>(

@@ -78,7 +78,8 @@ struct VerifiedPack: Sendable {
 }
 
 struct PackValidator: Sendable {
-    static let supportedPackSchemaVersion = 1
+    static let supportedPackSchemaVersions: Set<Int> = [1, 2]
+    static let supportedPackSchemaVersion = 2
     static let supportedContractVersion = 1
     static let requiredCountKeys = Set([
         "entities",
@@ -129,7 +130,7 @@ struct PackValidator: Sendable {
                 "expected a \(requiredRole) pack, found \(sidecar.packRole)"
             )
         }
-        guard sidecar.packSchemaVersion == Self.supportedPackSchemaVersion,
+        guard Self.supportedPackSchemaVersions.contains(sidecar.packSchemaVersion),
               sidecar.contractVersion == Self.supportedContractVersion else {
             throw PackValidationError.unsupportedPack("schema or contract version is unsupported")
         }

@@ -80,6 +80,7 @@ struct Entity: Identifiable, Hashable, Sendable {
     var colorB: String?
     var sourceDataset: String
     var sourceCommitSHA: String
+    var iconSourcePath: String? = nil
 
     var id: String { "\(entityType):\(gameID)" }
 
@@ -133,6 +134,7 @@ struct ContentRecord: Identifiable, Hashable, Sendable {
     var displayName: String?
     var payload: String
     var sourceCommitSHA: String
+    var iconSourcePath: String? = nil
 
     var id: String { "\(dataset):\(externalID):\(sourceOrdinal)" }
 

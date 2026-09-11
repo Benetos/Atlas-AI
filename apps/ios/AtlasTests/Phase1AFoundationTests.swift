@@ -167,7 +167,7 @@ final class CatalogAndLoadStateTests: XCTestCase {
         }
 
         let identity = try await catalog.packIdentity()
-        XCTAssertEqual(identity.packSchemaVersion, 1)
+        XCTAssertEqual(identity.packSchemaVersion, 2)
         XCTAssertFalse(identity.sourceCommitSHA.isEmpty)
     }
 

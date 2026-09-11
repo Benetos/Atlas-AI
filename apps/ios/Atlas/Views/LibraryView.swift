@@ -82,7 +82,14 @@ struct LibraryView: View {
         }
 
         var contentDataset: String? {
-            entityType == nil && recipeKind == nil ? rawValue : nil
+            switch self {
+            case .expeditions: rawValue
+            default: nil
+            }
+        }
+
+        var specialistFeature: SpecialistFeature? {
+            SpecialistFeature(dataset: rawValue)
         }
     }
 
@@ -98,11 +105,17 @@ struct LibraryView: View {
 
     var body: some View {
         @Bindable var session = session
-        return List {
-            if trimmedQuery.isEmpty {
-                browseSection
+        Group {
+            if trimmedQuery.isEmpty, let feature = session.browsing.specialistFeature {
+                specialistBrowse(feature)
             } else {
-                searchSection
+                List {
+                    if trimmedQuery.isEmpty {
+                        browseSection
+                    } else {
+                        searchSection
+                    }
+                }
             }
         }
         .navigationTitle("Library")
@@ -112,6 +125,22 @@ struct LibraryView: View {
         }
         .task(id: searchTaskID) {
             await searchAfterDebounce()
+        }
+    }
+
+    private func specialistBrowse(_ feature: SpecialistFeature) -> some View {
+        @Bindable var session = session
+        return VStack(spacing: 0) {
+            Picker("Category", selection: $session.browsing) {
+                ForEach(BrowseSection.allCases) { section in
+                    Text(section.title).tag(section)
+                }
+            }
+            .pickerStyle(.menu)
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            SpecialistCollectionView(feature: feature, usesLibraryTitle: true)
+                .id(feature)
         }
     }
 
@@ -224,8 +253,26 @@ struct LibraryView: View {
                 EntityCardView(entity: entity, provenance: packedProvenance)
             }
         case .recipe(let recipe):
-            AtlasOpenLink(destination: .recipe(id: recipe.recipeID), section: .library, replacesPath: true) {
-                RecipeCardView(recipe: recipe, provenance: packedProvenance)
+            HStack(alignment: .top, spacing: 12) {
+                AtlasOpenLink(destination: .recipe(id: recipe.recipeID), section: .library, replacesPath: true) {
+                    RecipeCardView(recipe: recipe, provenance: packedProvenance)
+                }
+                if recipe.recipeKind == "cooking" {
+                    AtlasOpenLink(
+                        destination: .recipePlan(
+                            type: recipe.outputEntityType,
+                            id: recipe.outputGameID,
+                            quantity: 1
+                        ),
+                        section: .library
+                    ) {
+                        Text("Open plan")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                    }
+                    .accessibilityLabel("Open plan for \(recipe.title)")
+                }
             }
         case .content(let record):
             AtlasOpenLink(
@@ -314,6 +361,8 @@ struct LibraryView: View {
                 page = try await catalog.entities(type: type, limit: pageSize, offset: session.browseOffset).map(AtlasCard.entity)
             } else if let kind = session.browsing.recipeKind {
                 page = try await catalog.recipes(kind: kind, limit: pageSize, offset: session.browseOffset).map(AtlasCard.recipe)
+            } else if session.browsing.specialistFeature != nil {
+                page = []
             } else if let dataset = session.browsing.contentDataset {
                 page = try await catalog.contentRecords(
                     dataset: dataset,

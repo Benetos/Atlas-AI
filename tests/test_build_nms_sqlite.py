@@ -250,7 +250,41 @@ def fixture_import_dir(root: Path) -> Path:
             "icon_source_path": "",
             "payload": '{"Id":"EXPEDITION_1","Name":"Pioneers"}',
             "source_commit_sha": COMMIT,
-        }
+        },
+        {
+            "dataset": "fish",
+            "external_id": "F_JELLYCHILD",
+            "source_ordinal": "0",
+            "display_name": "Child of Aquarius",
+            "icon_source_path": "TEXTURES/UI/FRONTEND/ICONS/FISH/PRODUCT2.FISH.JELLY.DDS",
+            "payload": json.dumps({
+                "ProductID": "F_JELLYCHILD",
+                "NameLower_Text": "Child of Aquarius",
+                "Quality": "Legendary",
+                "Size": "Small",
+                "Time": "Night",
+                "NeedsStorm": "true",
+                "RequiresMissionActive": "",
+                "Biomes": ["Frozen", "Lush"],
+                "Mystery": "keep-me",
+            }, separators=(",", ":")),
+            "source_commit_sha": COMMIT,
+        },
+        {
+            "dataset": "bait",
+            "external_id": "NANOTUBES",
+            "source_ordinal": "0",
+            "display_name": "Carbon Nanotubes",
+            "icon_source_path": "TEXTURES/UI/FRONTEND/ICONS/U4PRODUCTS/PRODUCT.NANOTUBES.DDS",
+            "payload": json.dumps({
+                "NameLower_Text": "Carbon Nanotubes",
+                "RarityPercent": 6,
+                "SizePercent": 2,
+                "UsedFor": "Night",
+                "Source": "product",
+            }, separators=(",", ":")),
+            "source_commit_sha": COMMIT,
+        },
     ]
     write_csv(
         import_dir / "content_records.csv",
@@ -330,7 +364,7 @@ def fixture_import_dir(root: Path) -> Path:
             "localizations": 2,
             "recipes": 3,
             "recipe_ingredients": 3,
-            "content_records": 1,
+            "content_records": 3,
         },
         "validation": {"passed": True, "errors": [], "warnings": []},
     }
@@ -431,6 +465,8 @@ class BuildNmsSqliteTests(unittest.TestCase):
             self.assertIn("nms_recipe_ingredients", tables)
             self.assertIn("nms_localizations", tables)
             self.assertIn("nms_content_records", tables)
+            self.assertIn("nms_fish", tables)
+            self.assertIn("nms_bait", tables)
             self.assertIn("pack_manifest", tables)
             self.assertNotIn("source_records", tables)
             self.assertNotIn("nms_assets", tables)
@@ -447,6 +483,29 @@ class BuildNmsSqliteTests(unittest.TestCase):
                 ("UI_FUEL1_NAME",),
             ).fetchone()[0]
             self.assertEqual(preferred, "Ferrite Dust")
+            self.assertEqual(
+                connection.execute("select pack_schema_version from pack_manifest").fetchone()[0],
+                2,
+            )
+            fish = connection.execute(
+                "select title, time_of_day, needs_storm, extra_json from nms_fish"
+            ).fetchone()
+            self.assertEqual(fish[0], "Child of Aquarius")
+            self.assertEqual(fish[1], "Night")
+            self.assertEqual(fish[2], 1)
+            extra = json.loads(fish[3])
+            self.assertEqual(extra.get("Mystery"), "keep-me")
+            biomes = [
+                row[0]
+                for row in connection.execute(
+                    "select biome from nms_fish_biomes order by position"
+                )
+            ]
+            self.assertEqual(biomes, ["Frozen", "Lush"])
+            bait = connection.execute(
+                "select title, used_for, rarity_percent from nms_bait"
+            ).fetchone()
+            self.assertEqual(bait, ("Carbon Nanotubes", "Night", "6"))
         finally:
             connection.close()
 

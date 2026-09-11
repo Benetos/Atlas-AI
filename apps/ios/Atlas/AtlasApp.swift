@@ -11,6 +11,7 @@ struct AtlasApp: App {
             RootView()
                 .environment(model)
                 .environment(router)
+                .environment(\.packDirectory, model.packDirectory)
                 .task {
                     await model.bootstrap()
                 }

@@ -53,9 +53,32 @@ protocol NMSStore: Sendable {
     func content(dataset: String, id: String, sourceOrdinal: Int) throws -> ContentRecord?
     func contentRecords(dataset: String, limit: Int, offset: Int) throws -> [ContentRecord]
     func searchContent(query: String, dataset: String?, limit: Int) throws -> [ContentRecord]
+    func hasFeatureTables() throws -> Bool
+    func specialistSummaries(_ query: SpecialistQuery) throws -> [SpecialistSummary]
+    func specialistRecord(
+        feature: SpecialistFeature,
+        id: String,
+        sourceOrdinal: Int
+    ) throws -> SpecialistDetail?
+    func specialistFilterOptions(feature: SpecialistFeature) throws -> SpecialistFilterOptions
+}
+
+extension NMSStore {
+    func hasFeatureTables() throws -> Bool { false }
+    func specialistSummaries(_ query: SpecialistQuery) throws -> [SpecialistSummary] { [] }
+    func specialistRecord(
+        feature: SpecialistFeature,
+        id: String,
+        sourceOrdinal: Int
+    ) throws -> SpecialistDetail? { nil }
+    func specialistFilterOptions(feature: SpecialistFeature) throws -> SpecialistFilterOptions {
+        .empty
+    }
 }
 
 final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
+    static let supportedPackSchemaVersions: Set<Int> = [1, 2]
+
     private struct StoredManifest {
         var value: PackManifest
         var inputManifestSHA256: String
@@ -63,6 +86,7 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
 
     private var db: OpaquePointer?
     private let lock = NSLock()
+    private var cachedHasFeatureTables: Bool?
 
     init(fileURL: URL) throws {
         guard fileURL.isFileURL else {
@@ -178,7 +202,7 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
                 )
             }
             let manifest = stored.value
-            guard manifest.packSchemaVersion == 1 else {
+            guard Self.supportedPackSchemaVersions.contains(manifest.packSchemaVersion) else {
                 throw NMSStoreError.queryFailed(
                     "This Atlas pack uses unsupported schema version \(manifest.packSchemaVersion)."
                 )
@@ -349,7 +373,8 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
                 """
                 select entity_type, game_id, name, display_name, subtitle, description,
                        category, subcategory, rarity, legality, base_value,
-                       color_r, color_g, color_b, source_dataset, source_commit_sha
+                       color_r, color_g, color_b, source_dataset, source_commit_sha,
+                       icon_source_path
                   from nms_entities
                  where entity_type = ? and game_id = ?
                 """,
@@ -366,7 +391,8 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
             var metadataSQL = """
             select e.entity_type, e.game_id, e.name, e.display_name, e.subtitle, e.description,
                    e.category, e.subcategory, e.rarity, e.legality, e.base_value,
-                   e.color_r, e.color_g, e.color_b, e.source_dataset, e.source_commit_sha
+                   e.color_r, e.color_g, e.color_b, e.source_dataset, e.source_commit_sha,
+                   e.icon_source_path
               from nms_entities e
              where 1 = 1
             """
@@ -409,7 +435,8 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
             var ftsSQL = """
             select e.entity_type, e.game_id, e.name, e.display_name, e.subtitle, e.description,
                    e.category, e.subcategory, e.rarity, e.legality, e.base_value,
-                   e.color_r, e.color_g, e.color_b, e.source_dataset, e.source_commit_sha
+                   e.color_r, e.color_g, e.color_b, e.source_dataset, e.source_commit_sha,
+                   e.icon_source_path
               from nms_entities_fts
               join nms_entities e
                 on e.entity_type = nms_entities_fts.entity_type
@@ -442,7 +469,8 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
                 """
                 select entity_type, game_id, name, display_name, subtitle, description,
                        category, subcategory, rarity, legality, base_value,
-                       color_r, color_g, color_b, source_dataset, source_commit_sha
+                       color_r, color_g, color_b, source_dataset, source_commit_sha,
+                       icon_source_path
                   from nms_entities
                  where entity_type = ?
                  order by lower(coalesce(display_name, name, game_id))
@@ -614,7 +642,7 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
             try query(
                 """
                 select dataset, external_id, source_ordinal, display_name,
-                       payload, source_commit_sha
+                       payload, source_commit_sha, icon_source_path
                   from nms_content_records
                  where dataset = ? and external_id = ? and source_ordinal = ?
                 """,
@@ -626,7 +654,8 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
                     sourceOrdinal: Int(sqlite3_column_int(stmt, 2)),
                     displayName: Self.text(stmt, 3),
                     payload: Self.text(stmt, 4) ?? "{}",
-                    sourceCommitSHA: Self.text(stmt, 5) ?? ""
+                    sourceCommitSHA: Self.text(stmt, 5) ?? "",
+                    iconSourcePath: Self.text(stmt, 6)
                 )
             }.first
         }
@@ -638,7 +667,7 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
             try query(
                 """
                 select dataset, external_id, source_ordinal, display_name,
-                       payload, source_commit_sha
+                       payload, source_commit_sha, icon_source_path
                   from nms_content_records
                  where dataset = ?
                  order by lower(coalesce(display_name, external_id)), source_ordinal
@@ -656,7 +685,7 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
         return try withLock {
             var metadataSQL = """
             select c.dataset, c.external_id, c.source_ordinal, c.display_name,
-                   c.payload, c.source_commit_sha
+                   c.payload, c.source_commit_sha, c.icon_source_path
               from nms_content_records c
              where 1 = 1
             """
@@ -694,7 +723,7 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
 
             var ftsSQL = """
             select c.dataset, c.external_id, c.source_ordinal, c.display_name,
-                   c.payload, c.source_commit_sha
+                   c.payload, c.source_commit_sha, c.icon_source_path
               from nms_content_fts
               join nms_content_records c
                 on c.dataset = nms_content_fts.dataset
@@ -720,6 +749,851 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
                 key: { $0.id }
             )
         }
+    }
+
+    func hasFeatureTables() throws -> Bool {
+        try withLock { try hasFeatureTablesUnlocked() }
+    }
+
+    func specialistSummaries(_ query: SpecialistQuery) throws -> [SpecialistSummary] {
+        guard query.limit > 0, query.offset >= 0 else { return [] }
+        return try withLock {
+            guard try hasFeatureTablesUnlocked() else { return [] }
+            switch query.feature {
+            case .fish: return try listFishUnlocked(query)
+            case .bait: return try listBaitUnlocked(query)
+            case .buildingParts: return try listBuildingPartsUnlocked(query)
+            case .shipParts: return try listShipPartsUnlocked(query)
+            case .corvetteParts: return try listCorvettePartsUnlocked(query)
+            case .fossils: return try listSimpleUnlocked(
+                query,
+                table: "nms_fossils",
+                extraSelect: "category",
+                categoryFilterColumn: "category"
+            )
+            case .legacyItems: return try listSimpleUnlocked(query, table: "nms_legacy_items")
+            case .buildingBlueprints:
+                return try listSimpleUnlocked(query, table: "nms_building_blueprints")
+            case .specialPurchases:
+                return try listSimpleUnlocked(query, table: "nms_special_purchases")
+            case .specialRewards:
+                return try listSimpleUnlocked(query, table: "nms_special_rewards")
+            case .stories:
+                return try listSimpleUnlocked(query, table: "nms_stories")
+            }
+        }
+    }
+
+    func specialistRecord(
+        feature: SpecialistFeature,
+        id: String,
+        sourceOrdinal: Int
+    ) throws -> SpecialistDetail? {
+        try withLock {
+            guard try hasFeatureTablesUnlocked() else { return nil }
+            switch feature {
+            case .fish: return try fishDetailUnlocked(id: id, sourceOrdinal: sourceOrdinal)
+            case .bait: return try baitDetailUnlocked(id: id, sourceOrdinal: sourceOrdinal)
+            case .buildingParts:
+                return try buildingPartDetailUnlocked(id: id, sourceOrdinal: sourceOrdinal)
+            case .shipParts: return try shipPartDetailUnlocked(id: id, sourceOrdinal: sourceOrdinal)
+            case .corvetteParts:
+                return try corvettePartDetailUnlocked(id: id, sourceOrdinal: sourceOrdinal)
+            case .fossils:
+                return try simpleDetailUnlocked(
+                    feature: feature,
+                    table: "nms_fossils",
+                    id: id,
+                    sourceOrdinal: sourceOrdinal,
+                    extraColumns: [("category", "Category")]
+                )
+            case .legacyItems:
+                return try simpleDetailUnlocked(
+                    feature: feature,
+                    table: "nms_legacy_items",
+                    id: id,
+                    sourceOrdinal: sourceOrdinal,
+                    extraColumns: [("converts_to", "Converts to"), ("conversion_ratio", "Conversion ratio")]
+                )
+            case .buildingBlueprints:
+                return try simpleDetailUnlocked(
+                    feature: feature,
+                    table: "nms_building_blueprints",
+                    id: id,
+                    sourceOrdinal: sourceOrdinal
+                )
+            case .specialPurchases:
+                return try simpleDetailUnlocked(
+                    feature: feature,
+                    table: "nms_special_purchases",
+                    id: id,
+                    sourceOrdinal: sourceOrdinal
+                )
+            case .specialRewards:
+                return try rewardDetailUnlocked(id: id, sourceOrdinal: sourceOrdinal)
+            case .stories:
+                return try storyDetailUnlocked(id: id, sourceOrdinal: sourceOrdinal)
+            }
+        }
+    }
+
+    func specialistFilterOptions(feature: SpecialistFeature) throws -> SpecialistFilterOptions {
+        try withLock {
+            guard try hasFeatureTablesUnlocked() else { return .empty }
+            var options = SpecialistFilterOptions()
+            switch feature {
+            case .fish:
+                options.times = try distinctUnlocked("nms_fish", column: "time_of_day")
+                options.sizes = try distinctUnlocked("nms_fish", column: "size")
+                options.qualities = try distinctUnlocked("nms_fish", column: "quality")
+                options.biomes = try distinctUnlocked("nms_fish_biomes", column: "biome")
+            case .bait:
+                options.usedFor = try distinctUnlocked("nms_bait", column: "used_for")
+            case .shipParts:
+                options.shipTypes = try distinctUnlocked("nms_ship_parts", column: "ship_type")
+                options.categories = try distinctUnlocked("nms_ship_parts", column: "category")
+            case .buildingParts:
+                options.categories = try distinctUnlocked("nms_building_parts", column: "wiki_category")
+            case .corvetteParts:
+                options.categories = try distinctUnlocked(
+                    "nms_corvette_part_categories",
+                    column: "category"
+                )
+            case .fossils:
+                options.categories = try distinctUnlocked("nms_fossils", column: "category")
+            default:
+                break
+            }
+            return options
+        }
+    }
+
+    private func hasFeatureTablesUnlocked() throws -> Bool {
+        if let cachedHasFeatureTables { return cachedHasFeatureTables }
+        let names: [String] = try query(
+            "select name from sqlite_schema where type = 'table' and name = ?",
+            parameters: [.text("nms_fish")]
+        ) { stmt in
+            Self.text(stmt, 0) ?? ""
+        }
+        let present = names.contains("nms_fish")
+        cachedHasFeatureTables = present
+        return present
+    }
+
+    private func listFishUnlocked(_ query: SpecialistQuery) throws -> [SpecialistSummary] {
+        var sql = """
+        select distinct f.external_id, f.source_ordinal, f.title, f.subtitle,
+               f.quality, f.size, f.time_of_day, f.needs_storm, f.icon_source_path,
+               f.requires_mission
+          from nms_fish f
+        """
+        var parameters: [SQLValue] = []
+        if query.biome != nil {
+            sql += """
+              join nms_fish_biomes b
+                on b.external_id = f.external_id
+               and b.source_ordinal = f.source_ordinal
+            """
+        }
+        sql += " where 1 = 1"
+        appendSearch(query.search, columns: ["f.title", "f.external_id", "f.subtitle"], sql: &sql, parameters: &parameters)
+        if let timeOfDay = query.timeOfDay {
+            sql += " and f.time_of_day = ?"
+            parameters.append(.text(timeOfDay))
+        }
+        if let size = query.size {
+            sql += " and f.size = ?"
+            parameters.append(.text(size))
+        }
+        if let quality = query.quality {
+            sql += " and f.quality = ?"
+            parameters.append(.text(quality))
+        }
+        if let needsStorm = query.needsStorm {
+            sql += " and f.needs_storm = ?"
+            parameters.append(.int(needsStorm ? 1 : 0))
+        }
+        if let biome = query.biome {
+            sql += " and b.biome = ?"
+            parameters.append(.text(biome))
+        }
+        sql += " order by lower(coalesce(f.title, f.external_id)) limit ? offset ?"
+        parameters.append(.int(query.limit))
+        parameters.append(.int(query.offset))
+        return try self.query(sql, parameters: parameters) { stmt in
+            var badges: [String] = []
+            if let quality = Self.text(stmt, 4) { badges.append(quality) }
+            if let size = Self.text(stmt, 5) { badges.append(size) }
+            if let time = Self.text(stmt, 6) { badges.append(time) }
+            if Self.intValue(stmt, 7) == 1 { badges.append("Storm") }
+            if Self.text(stmt, 9) != nil { badges.append("Mission") }
+            return SpecialistSummary(
+                feature: .fish,
+                externalID: Self.text(stmt, 0) ?? "",
+                sourceOrdinal: Int(sqlite3_column_int(stmt, 1)),
+                title: Self.text(stmt, 2) ?? Self.text(stmt, 0) ?? "",
+                subtitle: Self.text(stmt, 3),
+                iconSourcePath: Self.text(stmt, 8),
+                badges: badges,
+                notEnabled: false
+            )
+        }
+    }
+
+    private func listBaitUnlocked(_ query: SpecialistQuery) throws -> [SpecialistSummary] {
+        var sql = """
+        select external_id, source_ordinal, title, used_for, rarity_percent,
+               size_percent, source_kind, icon_source_path
+          from nms_bait
+         where 1 = 1
+        """
+        var parameters: [SQLValue] = []
+        appendSearch(query.search, columns: ["title", "external_id"], sql: &sql, parameters: &parameters)
+        if let usedFor = query.usedFor {
+            sql += " and used_for = ?"
+            parameters.append(.text(usedFor))
+        }
+        sql += " order by lower(coalesce(title, external_id)) limit ? offset ?"
+        parameters.append(.int(query.limit))
+        parameters.append(.int(query.offset))
+        return try self.query(sql, parameters: parameters) { stmt in
+            var badges: [String] = []
+            if let usedFor = Self.text(stmt, 3) { badges.append(usedFor) }
+            if let rarity = Self.text(stmt, 4) { badges.append("Rarity \(rarity)%") }
+            if let size = Self.text(stmt, 5) { badges.append("Size \(size)%") }
+            return SpecialistSummary(
+                feature: .bait,
+                externalID: Self.text(stmt, 0) ?? "",
+                sourceOrdinal: Int(sqlite3_column_int(stmt, 1)),
+                title: Self.text(stmt, 2) ?? Self.text(stmt, 0) ?? "",
+                subtitle: Self.text(stmt, 6),
+                iconSourcePath: Self.text(stmt, 7),
+                badges: badges,
+                notEnabled: false
+            )
+        }
+    }
+
+    private func listBuildingPartsUnlocked(_ query: SpecialistQuery) throws -> [SpecialistSummary] {
+        try listPartsUnlocked(
+            query,
+            feature: .buildingParts,
+            table: "nms_building_parts",
+            categoryColumn: "wiki_category"
+        )
+    }
+
+    private func listCorvettePartsUnlocked(_ query: SpecialistQuery) throws -> [SpecialistSummary] {
+        var sql = """
+        select distinct p.external_id, p.source_ordinal, p.title, p.wiki_category,
+               p.not_enabled, p.icon_source_path
+          from nms_corvette_parts p
+        """
+        var parameters: [SQLValue] = []
+        if query.category != nil {
+            sql += """
+              join nms_corvette_part_categories c
+                on c.external_id = p.external_id
+               and c.source_ordinal = p.source_ordinal
+            """
+        }
+        sql += " where 1 = 1"
+        appendSearch(query.search, columns: ["p.title", "p.external_id"], sql: &sql, parameters: &parameters)
+        if !query.includeNotEnabled {
+            sql += " and p.not_enabled = 0"
+        }
+        if let category = query.category {
+            sql += " and c.category = ?"
+            parameters.append(.text(category))
+        }
+        sql += " order by lower(coalesce(p.title, p.external_id)) limit ? offset ?"
+        parameters.append(.int(query.limit))
+        parameters.append(.int(query.offset))
+        return try self.query(sql, parameters: parameters) { stmt in
+            let notEnabled = sqlite3_column_int(stmt, 4) != 0
+            var badges: [String] = []
+            if let category = Self.text(stmt, 3) { badges.append(category) }
+            if notEnabled { badges.append("Not enabled") }
+            return SpecialistSummary(
+                feature: .corvetteParts,
+                externalID: Self.text(stmt, 0) ?? "",
+                sourceOrdinal: Int(sqlite3_column_int(stmt, 1)),
+                title: Self.text(stmt, 2) ?? Self.text(stmt, 0) ?? "",
+                subtitle: nil,
+                iconSourcePath: Self.text(stmt, 5),
+                badges: badges,
+                notEnabled: notEnabled
+            )
+        }
+    }
+
+    private func listPartsUnlocked(
+        _ query: SpecialistQuery,
+        feature: SpecialistFeature,
+        table: String,
+        categoryColumn: String
+    ) throws -> [SpecialistSummary] {
+        var sql = """
+        select external_id, source_ordinal, title, \(categoryColumn), not_enabled, icon_source_path
+          from \(table)
+         where 1 = 1
+        """
+        var parameters: [SQLValue] = []
+        appendSearch(query.search, columns: ["title", "external_id"], sql: &sql, parameters: &parameters)
+        if !query.includeNotEnabled {
+            sql += " and not_enabled = 0"
+        }
+        if let category = query.category {
+            sql += " and \(categoryColumn) = ?"
+            parameters.append(.text(category))
+        }
+        sql += " order by lower(coalesce(title, external_id)) limit ? offset ?"
+        parameters.append(.int(query.limit))
+        parameters.append(.int(query.offset))
+        return try self.query(sql, parameters: parameters) { stmt in
+            let notEnabled = sqlite3_column_int(stmt, 4) != 0
+            var badges: [String] = []
+            if let category = Self.text(stmt, 3) { badges.append(category) }
+            if notEnabled { badges.append("Not enabled") }
+            return SpecialistSummary(
+                feature: feature,
+                externalID: Self.text(stmt, 0) ?? "",
+                sourceOrdinal: Int(sqlite3_column_int(stmt, 1)),
+                title: Self.text(stmt, 2) ?? Self.text(stmt, 0) ?? "",
+                subtitle: nil,
+                iconSourcePath: Self.text(stmt, 5),
+                badges: badges,
+                notEnabled: notEnabled
+            )
+        }
+    }
+
+    private func listShipPartsUnlocked(_ query: SpecialistQuery) throws -> [SpecialistSummary] {
+        var sql = """
+        select external_id, source_ordinal, title, subtitle, ship_type, category,
+               rarity, icon_source_path
+          from nms_ship_parts
+         where 1 = 1
+        """
+        var parameters: [SQLValue] = []
+        appendSearch(
+            query.search,
+            columns: ["title", "external_id", "subtitle"],
+            sql: &sql,
+            parameters: &parameters
+        )
+        if let shipType = query.shipType {
+            sql += " and ship_type = ?"
+            parameters.append(.text(shipType))
+        }
+        if let category = query.category {
+            sql += " and category = ?"
+            parameters.append(.text(category))
+        }
+        sql += " order by lower(coalesce(title, external_id)) limit ? offset ?"
+        parameters.append(.int(query.limit))
+        parameters.append(.int(query.offset))
+        return try self.query(sql, parameters: parameters) { stmt in
+            var badges: [String] = []
+            if let type = Self.text(stmt, 4) { badges.append(type) }
+            if let category = Self.text(stmt, 5) { badges.append(category) }
+            if let rarity = Self.text(stmt, 6) { badges.append(rarity) }
+            return SpecialistSummary(
+                feature: .shipParts,
+                externalID: Self.text(stmt, 0) ?? "",
+                sourceOrdinal: Int(sqlite3_column_int(stmt, 1)),
+                title: Self.text(stmt, 2) ?? Self.text(stmt, 0) ?? "",
+                subtitle: Self.text(stmt, 3),
+                iconSourcePath: Self.text(stmt, 7),
+                badges: badges,
+                notEnabled: false
+            )
+        }
+    }
+
+    private func listSimpleUnlocked(
+        _ query: SpecialistQuery,
+        table: String,
+        extraSelect: String? = nil,
+        categoryFilterColumn: String? = nil
+    ) throws -> [SpecialistSummary] {
+        let extra = extraSelect.map { ", \($0)" } ?? ""
+        var sql = """
+        select external_id, source_ordinal, title, icon_source_path\(extra)
+          from \(table)
+         where 1 = 1
+        """
+        var parameters: [SQLValue] = []
+        appendSearch(query.search, columns: ["title", "external_id"], sql: &sql, parameters: &parameters)
+        if let column = categoryFilterColumn, let category = query.category {
+            sql += " and \(column) = ?"
+            parameters.append(.text(category))
+        }
+        sql += " order by lower(coalesce(title, external_id)) limit ? offset ?"
+        parameters.append(.int(query.limit))
+        parameters.append(.int(query.offset))
+        return try self.query(sql, parameters: parameters) { stmt in
+            var badges: [String] = []
+            if extraSelect != nil, let extra = Self.text(stmt, 4) {
+                badges.append(extra)
+            }
+            return SpecialistSummary(
+                feature: query.feature,
+                externalID: Self.text(stmt, 0) ?? "",
+                sourceOrdinal: Int(sqlite3_column_int(stmt, 1)),
+                title: Self.text(stmt, 2) ?? Self.text(stmt, 0) ?? "",
+                subtitle: nil,
+                iconSourcePath: Self.text(stmt, 3),
+                badges: badges,
+                notEnabled: false
+            )
+        }
+    }
+
+    private func fishDetailUnlocked(id: String, sourceOrdinal: Int) throws -> SpecialistDetail? {
+        let rows: [SpecialistDetail] = try query(
+            """
+            select external_id, source_ordinal, title, subtitle, description, quality, size,
+                   time_of_day, needs_storm, requires_mission, mission_seed, icon_source_path,
+                   extra_json, product_id
+              from nms_fish
+             where external_id = ? and source_ordinal = ?
+            """,
+            parameters: [.text(id), .int(sourceOrdinal)]
+        ) { stmt in
+            var fields: [ContentField] = []
+            Self.appendField(&fields, key: "product_id", label: "Product ID", value: Self.text(stmt, 13))
+            Self.appendField(&fields, key: "description", label: "Description", value: Self.text(stmt, 4))
+            Self.appendField(&fields, key: "quality", label: "Quality", value: Self.text(stmt, 5))
+            Self.appendField(&fields, key: "size", label: "Size", value: Self.text(stmt, 6))
+            Self.appendField(&fields, key: "time_of_day", label: "Time", value: Self.text(stmt, 7))
+            if let storm = Self.intValue(stmt, 8) {
+                Self.appendField(&fields, key: "needs_storm", label: "Needs storm", value: storm == 1 ? "true" : "false")
+            }
+            Self.appendField(&fields, key: "requires_mission", label: "Requires mission", value: Self.text(stmt, 9))
+            Self.appendField(&fields, key: "mission_seed", label: "Mission seed", value: Self.text(stmt, 10))
+            let summary = SpecialistSummary(
+                feature: .fish,
+                externalID: Self.text(stmt, 0) ?? id,
+                sourceOrdinal: Int(sqlite3_column_int(stmt, 1)),
+                title: Self.text(stmt, 2) ?? id,
+                subtitle: Self.text(stmt, 3),
+                iconSourcePath: Self.text(stmt, 11),
+                badges: fields.compactMap { field in
+                    ["Quality", "Size", "Time"].contains(field.label) ? field.value : nil
+                },
+                notEnabled: false
+            )
+            return SpecialistDetail(
+                summary: summary,
+                fields: fields,
+                biomes: [],
+                requirements: [],
+                categories: [],
+                rewardSources: [],
+                storyPages: [],
+                extraFields: Self.extraFields(Self.text(stmt, 12) ?? "{}"),
+                prettyPayload: ""
+            )
+        }
+        guard var detail = rows.first else { return nil }
+        detail.biomes = try query(
+            """
+            select biome from nms_fish_biomes
+             where external_id = ? and source_ordinal = ?
+             order by position
+            """,
+            parameters: [.text(id), .int(sourceOrdinal)]
+        ) { stmt in
+            Self.text(stmt, 0) ?? ""
+        }.filter { !$0.isEmpty }
+        detail.prettyPayload = try payloadUnlocked(dataset: "fish", id: id, sourceOrdinal: sourceOrdinal)
+        return detail
+    }
+
+    private func baitDetailUnlocked(id: String, sourceOrdinal: Int) throws -> SpecialistDetail? {
+        let rows: [SpecialistDetail] = try query(
+            """
+            select external_id, source_ordinal, title, used_for, rarity_percent, size_percent,
+                   source_kind, icon_source_path, extra_json
+              from nms_bait
+             where external_id = ? and source_ordinal = ?
+            """,
+            parameters: [.text(id), .int(sourceOrdinal)]
+        ) { stmt in
+            var fields: [ContentField] = []
+            Self.appendField(&fields, key: "used_for", label: "Used for", value: Self.text(stmt, 3))
+            Self.appendField(&fields, key: "rarity_percent", label: "Rarity %", value: Self.text(stmt, 4))
+            Self.appendField(&fields, key: "size_percent", label: "Size %", value: Self.text(stmt, 5))
+            Self.appendField(&fields, key: "source_kind", label: "Source", value: Self.text(stmt, 6))
+            let summary = SpecialistSummary(
+                feature: .bait,
+                externalID: Self.text(stmt, 0) ?? id,
+                sourceOrdinal: Int(sqlite3_column_int(stmt, 1)),
+                title: Self.text(stmt, 2) ?? id,
+                subtitle: Self.text(stmt, 3),
+                iconSourcePath: Self.text(stmt, 7),
+                badges: [Self.text(stmt, 3)].compactMap { $0 },
+                notEnabled: false
+            )
+            return SpecialistDetail(
+                summary: summary,
+                fields: fields,
+                biomes: [],
+                requirements: [],
+                categories: [],
+                rewardSources: [],
+                storyPages: [],
+                extraFields: Self.extraFields(Self.text(stmt, 8) ?? "{}"),
+                prettyPayload: ""
+            )
+        }
+        guard var detail = rows.first else { return nil }
+        detail.prettyPayload = try payloadUnlocked(dataset: "bait", id: id, sourceOrdinal: sourceOrdinal)
+        return detail
+    }
+
+    private func buildingPartDetailUnlocked(id: String, sourceOrdinal: Int) throws -> SpecialistDetail? {
+        try partDetailUnlocked(
+            feature: .buildingParts,
+            table: "nms_building_parts",
+            requirementsTable: "nms_building_part_requirements",
+            id: id,
+            sourceOrdinal: sourceOrdinal
+        )
+    }
+
+    private func corvettePartDetailUnlocked(id: String, sourceOrdinal: Int) throws -> SpecialistDetail? {
+        guard var detail = try partDetailUnlocked(
+            feature: .corvetteParts,
+            table: "nms_corvette_parts",
+            requirementsTable: "nms_corvette_part_requirements",
+            id: id,
+            sourceOrdinal: sourceOrdinal
+        ) else { return nil }
+        detail.categories = try query(
+            """
+            select category from nms_corvette_part_categories
+             where external_id = ? and source_ordinal = ?
+             order by position
+            """,
+            parameters: [.text(id), .int(sourceOrdinal)]
+        ) { stmt in
+            Self.text(stmt, 0) ?? ""
+        }.filter { !$0.isEmpty }
+        return detail
+    }
+
+    private func partDetailUnlocked(
+        feature: SpecialistFeature,
+        table: String,
+        requirementsTable: String,
+        id: String,
+        sourceOrdinal: Int
+    ) throws -> SpecialistDetail? {
+        let rows: [SpecialistDetail] = try query(
+            """
+            select external_id, source_ordinal, title, wiki_category, not_enabled,
+                   icon_source_path, extra_json
+              from \(table)
+             where external_id = ? and source_ordinal = ?
+            """,
+            parameters: [.text(id), .int(sourceOrdinal)]
+        ) { stmt in
+            let notEnabled = sqlite3_column_int(stmt, 4) != 0
+            var fields: [ContentField] = []
+            Self.appendField(&fields, key: "wiki_category", label: "Category", value: Self.text(stmt, 3))
+            Self.appendField(
+                &fields,
+                key: "not_enabled",
+                label: "Not enabled",
+                value: notEnabled ? "true" : "false"
+            )
+            let summary = SpecialistSummary(
+                feature: feature,
+                externalID: Self.text(stmt, 0) ?? id,
+                sourceOrdinal: Int(sqlite3_column_int(stmt, 1)),
+                title: Self.text(stmt, 2) ?? id,
+                subtitle: Self.text(stmt, 3),
+                iconSourcePath: Self.text(stmt, 5),
+                badges: [Self.text(stmt, 3)].compactMap { $0 },
+                notEnabled: notEnabled
+            )
+            return SpecialistDetail(
+                summary: summary,
+                fields: fields,
+                biomes: [],
+                requirements: [],
+                categories: [],
+                rewardSources: [],
+                storyPages: [],
+                extraFields: Self.extraFields(Self.text(stmt, 6) ?? "{}"),
+                prettyPayload: ""
+            )
+        }
+        guard var detail = rows.first else { return nil }
+        detail.requirements = try requirementsUnlocked(
+            table: requirementsTable,
+            id: id,
+            sourceOrdinal: sourceOrdinal
+        )
+        detail.prettyPayload = try payloadUnlocked(
+            dataset: feature.dataset,
+            id: id,
+            sourceOrdinal: sourceOrdinal
+        )
+        return detail
+    }
+
+    private func shipPartDetailUnlocked(id: String, sourceOrdinal: Int) throws -> SpecialistDetail? {
+        let rows: [SpecialistDetail] = try query(
+            """
+            select external_id, source_ordinal, title, subtitle, ship_type, category,
+                   rarity, base_value, icon_source_path, extra_json
+              from nms_ship_parts
+             where external_id = ? and source_ordinal = ?
+            """,
+            parameters: [.text(id), .int(sourceOrdinal)]
+        ) { stmt in
+            var fields: [ContentField] = []
+            Self.appendField(&fields, key: "ship_type", label: "Type", value: Self.text(stmt, 4))
+            Self.appendField(&fields, key: "category", label: "Category", value: Self.text(stmt, 5))
+            Self.appendField(&fields, key: "rarity", label: "Rarity", value: Self.text(stmt, 6))
+            Self.appendField(&fields, key: "base_value", label: "Base value", value: Self.text(stmt, 7))
+            let summary = SpecialistSummary(
+                feature: .shipParts,
+                externalID: Self.text(stmt, 0) ?? id,
+                sourceOrdinal: Int(sqlite3_column_int(stmt, 1)),
+                title: Self.text(stmt, 2) ?? id,
+                subtitle: Self.text(stmt, 3),
+                iconSourcePath: Self.text(stmt, 8),
+                badges: [Self.text(stmt, 4), Self.text(stmt, 5)].compactMap { $0 },
+                notEnabled: false
+            )
+            return SpecialistDetail(
+                summary: summary,
+                fields: fields,
+                biomes: [],
+                requirements: [],
+                categories: [],
+                rewardSources: [],
+                storyPages: [],
+                extraFields: Self.extraFields(Self.text(stmt, 9) ?? "{}"),
+                prettyPayload: ""
+            )
+        }
+        guard var detail = rows.first else { return nil }
+        detail.prettyPayload = try payloadUnlocked(
+            dataset: "ship_parts",
+            id: id,
+            sourceOrdinal: sourceOrdinal
+        )
+        return detail
+    }
+
+    private func rewardDetailUnlocked(id: String, sourceOrdinal: Int) throws -> SpecialistDetail? {
+        guard var detail = try simpleDetailUnlocked(
+            feature: .specialRewards,
+            table: "nms_special_rewards",
+            id: id,
+            sourceOrdinal: sourceOrdinal
+        ) else { return nil }
+        detail.rewardSources = try query(
+            """
+            select source_label from nms_special_reward_sources
+             where external_id = ? and source_ordinal = ?
+             order by position
+            """,
+            parameters: [.text(id), .int(sourceOrdinal)]
+        ) { stmt in
+            Self.text(stmt, 0) ?? ""
+        }.filter { !$0.isEmpty }
+        return detail
+    }
+
+    private func storyDetailUnlocked(id: String, sourceOrdinal: Int) throws -> SpecialistDetail? {
+        guard var detail = try simpleDetailUnlocked(
+            feature: .stories,
+            table: "nms_stories",
+            id: id,
+            sourceOrdinal: sourceOrdinal
+        ) else { return nil }
+        let pages: [(Int, String?)] = try query(
+            """
+            select position, title from nms_story_pages
+             where external_id = ? and source_ordinal = ?
+             order by position
+            """,
+            parameters: [.text(id), .int(sourceOrdinal)]
+        ) { stmt in
+            (Int(sqlite3_column_int(stmt, 0)), Self.text(stmt, 1))
+        }
+        let entries: [SpecialistStoryEntry] = try query(
+            """
+            select page_position, position, title, body from nms_story_entries
+             where external_id = ? and source_ordinal = ?
+             order by page_position, position
+            """,
+            parameters: [.text(id), .int(sourceOrdinal)]
+        ) { stmt in
+            SpecialistStoryEntry(
+                pagePosition: Int(sqlite3_column_int(stmt, 0)),
+                position: Int(sqlite3_column_int(stmt, 1)),
+                title: Self.text(stmt, 2),
+                body: Self.text(stmt, 3)
+            )
+        }
+        detail.storyPages = pages.map { position, title in
+            SpecialistStoryPage(
+                position: position,
+                title: title,
+                entries: entries.filter { $0.pagePosition == position }
+            )
+        }
+        return detail
+    }
+
+    private func simpleDetailUnlocked(
+        feature: SpecialistFeature,
+        table: String,
+        id: String,
+        sourceOrdinal: Int,
+        extraColumns: [(column: String, label: String)] = []
+    ) throws -> SpecialistDetail? {
+        let extras = extraColumns.map(\.column)
+        let extraSQL = extras.isEmpty ? "" : ", " + extras.joined(separator: ", ")
+        let rows: [SpecialistDetail] = try query(
+            """
+            select external_id, source_ordinal, title, icon_source_path, extra_json\(extraSQL)
+              from \(table)
+             where external_id = ? and source_ordinal = ?
+            """,
+            parameters: [.text(id), .int(sourceOrdinal)]
+        ) { stmt in
+            var fields: [ContentField] = []
+            for (index, column) in extraColumns.enumerated() {
+                Self.appendField(
+                    &fields,
+                    key: column.column,
+                    label: column.label,
+                    value: Self.text(stmt, Int32(5 + index))
+                )
+            }
+            let summary = SpecialistSummary(
+                feature: feature,
+                externalID: Self.text(stmt, 0) ?? id,
+                sourceOrdinal: Int(sqlite3_column_int(stmt, 1)),
+                title: Self.text(stmt, 2) ?? id,
+                subtitle: fields.first?.value,
+                iconSourcePath: Self.text(stmt, 3),
+                badges: fields.map(\.value),
+                notEnabled: false
+            )
+            return SpecialistDetail(
+                summary: summary,
+                fields: fields,
+                biomes: [],
+                requirements: [],
+                categories: [],
+                rewardSources: [],
+                storyPages: [],
+                extraFields: Self.extraFields(Self.text(stmt, 4) ?? "{}"),
+                prettyPayload: ""
+            )
+        }
+        guard var detail = rows.first else { return nil }
+        detail.prettyPayload = try payloadUnlocked(
+            dataset: feature.dataset,
+            id: id,
+            sourceOrdinal: sourceOrdinal
+        )
+        return detail
+    }
+
+    private func requirementsUnlocked(
+        table: String,
+        id: String,
+        sourceOrdinal: Int
+    ) throws -> [SpecialistRequirement] {
+        try query(
+            """
+            select r.position, r.entity_type, r.game_id, r.amount,
+                   coalesce(e.display_name, e.name, r.game_id)
+              from \(table) r
+              left join nms_entities e
+                on e.entity_type = r.entity_type
+               and e.game_id = r.game_id
+             where r.external_id = ? and r.source_ordinal = ?
+             order by r.position
+            """,
+            parameters: [.text(id), .int(sourceOrdinal)]
+        ) { stmt in
+            SpecialistRequirement(
+                position: Int(sqlite3_column_int(stmt, 0)),
+                entityType: Self.text(stmt, 1),
+                gameID: Self.text(stmt, 2),
+                amount: Self.text(stmt, 3),
+                title: Self.text(stmt, 4)
+            )
+        }
+    }
+
+    private func payloadUnlocked(dataset: String, id: String, sourceOrdinal: Int) throws -> String {
+        let rows: [String] = try query(
+            """
+            select payload from nms_content_records
+             where dataset = ? and external_id = ? and source_ordinal = ?
+            """,
+            parameters: [.text(dataset), .text(id), .int(sourceOrdinal)]
+        ) { stmt in
+            Self.text(stmt, 0) ?? "{}"
+        }
+        let payload = rows.first ?? "{}"
+        return ContentDetailPresenter.present(payload: payload).prettyPayload
+    }
+
+    private func distinctUnlocked(_ table: String, column: String) throws -> [String] {
+        try query(
+            """
+            select distinct \(column) from \(table)
+             where \(column) is not null and \(column) <> ''
+             order by lower(\(column))
+            """,
+            parameters: []
+        ) { stmt in
+            Self.text(stmt, 0) ?? ""
+        }.filter { !$0.isEmpty }
+    }
+
+    private func appendSearch(
+        _ search: String,
+        columns: [String],
+        sql: inout String,
+        parameters: inout [SQLValue]
+    ) {
+        let tokens = Self.searchTokens(search)
+        guard !tokens.isEmpty else { return }
+        Self.appendTokenPredicates(tokens, columns: columns, sql: &sql, parameters: &parameters)
+    }
+
+    private static func appendField(
+        _ fields: inout [ContentField],
+        key: String,
+        label: String,
+        value: String?
+    ) {
+        guard let value, !value.isEmpty else { return }
+        fields.append(ContentField(key: key, label: label, value: value))
+    }
+
+    private static func extraFields(_ json: String) -> [ContentField] {
+        ContentDetailPresenter.present(payload: json).fields
+    }
+
+    private static func intValue(_ stmt: OpaquePointer, _ index: Int32) -> Int? {
+        if sqlite3_column_type(stmt, index) == SQLITE_NULL { return nil }
+        return Int(sqlite3_column_int64(stmt, index))
     }
 
     private func ingredientsUnlocked(recipeID: String) throws -> [RecipeIngredient] {
@@ -811,7 +1685,8 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
             colorG: text(stmt, 12),
             colorB: text(stmt, 13),
             sourceDataset: text(stmt, 14) ?? "",
-            sourceCommitSHA: text(stmt, 15) ?? ""
+            sourceCommitSHA: text(stmt, 15) ?? "",
+            iconSourcePath: text(stmt, 16)
         )
     }
 
@@ -839,7 +1714,8 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
             sourceOrdinal: Int(sqlite3_column_int(stmt, 2)),
             displayName: text(stmt, 3),
             payload: text(stmt, 4) ?? "{}",
-            sourceCommitSHA: text(stmt, 5) ?? ""
+            sourceCommitSHA: text(stmt, 5) ?? "",
+            iconSourcePath: text(stmt, 6)
         )
     }
 
