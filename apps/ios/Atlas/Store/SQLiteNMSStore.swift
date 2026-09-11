@@ -53,7 +53,6 @@ protocol NMSStore: Sendable {
     func content(dataset: String, id: String, sourceOrdinal: Int) throws -> ContentRecord?
     func contentRecords(dataset: String, limit: Int, offset: Int) throws -> [ContentRecord]
     func searchContent(query: String, dataset: String?, limit: Int) throws -> [ContentRecord]
-    func hasFeatureTables() throws -> Bool
     func specialistSummaries(_ query: SpecialistQuery) throws -> [SpecialistSummary]
     func specialistRecord(
         feature: SpecialistFeature,
@@ -63,21 +62,8 @@ protocol NMSStore: Sendable {
     func specialistFilterOptions(feature: SpecialistFeature) throws -> SpecialistFilterOptions
 }
 
-extension NMSStore {
-    func hasFeatureTables() throws -> Bool { false }
-    func specialistSummaries(_ query: SpecialistQuery) throws -> [SpecialistSummary] { [] }
-    func specialistRecord(
-        feature: SpecialistFeature,
-        id: String,
-        sourceOrdinal: Int
-    ) throws -> SpecialistDetail? { nil }
-    func specialistFilterOptions(feature: SpecialistFeature) throws -> SpecialistFilterOptions {
-        .empty
-    }
-}
-
 final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
-    static let supportedPackSchemaVersions: Set<Int> = [1, 2]
+    static let supportedPackSchemaVersion = 2
 
     private struct StoredManifest {
         var value: PackManifest
@@ -86,7 +72,6 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
 
     private var db: OpaquePointer?
     private let lock = NSLock()
-    private var cachedHasFeatureTables: Bool?
 
     init(fileURL: URL) throws {
         guard fileURL.isFileURL else {
@@ -202,7 +187,7 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
                 )
             }
             let manifest = stored.value
-            guard Self.supportedPackSchemaVersions.contains(manifest.packSchemaVersion) else {
+            guard manifest.packSchemaVersion == Self.supportedPackSchemaVersion else {
                 throw NMSStoreError.queryFailed(
                     "This Atlas pack uses unsupported schema version \(manifest.packSchemaVersion)."
                 )
@@ -751,14 +736,9 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
         }
     }
 
-    func hasFeatureTables() throws -> Bool {
-        try withLock { try hasFeatureTablesUnlocked() }
-    }
-
     func specialistSummaries(_ query: SpecialistQuery) throws -> [SpecialistSummary] {
         guard query.limit > 0, query.offset >= 0 else { return [] }
         return try withLock {
-            guard try hasFeatureTablesUnlocked() else { return [] }
             switch query.feature {
             case .fish: return try listFishUnlocked(query)
             case .bait: return try listBaitUnlocked(query)
@@ -790,7 +770,6 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
         sourceOrdinal: Int
     ) throws -> SpecialistDetail? {
         try withLock {
-            guard try hasFeatureTablesUnlocked() else { return nil }
             switch feature {
             case .fish: return try fishDetailUnlocked(id: id, sourceOrdinal: sourceOrdinal)
             case .bait: return try baitDetailUnlocked(id: id, sourceOrdinal: sourceOrdinal)
@@ -839,7 +818,6 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
 
     func specialistFilterOptions(feature: SpecialistFeature) throws -> SpecialistFilterOptions {
         try withLock {
-            guard try hasFeatureTablesUnlocked() else { return .empty }
             var options = SpecialistFilterOptions()
             switch feature {
             case .fish:
@@ -866,19 +844,6 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
             }
             return options
         }
-    }
-
-    private func hasFeatureTablesUnlocked() throws -> Bool {
-        if let cachedHasFeatureTables { return cachedHasFeatureTables }
-        let names: [String] = try query(
-            "select name from sqlite_schema where type = 'table' and name = ?",
-            parameters: [.text("nms_fish")]
-        ) { stmt in
-            Self.text(stmt, 0) ?? ""
-        }
-        let present = names.contains("nms_fish")
-        cachedHasFeatureTables = present
-        return present
     }
 
     private func listFishUnlocked(_ query: SpecialistQuery) throws -> [SpecialistSummary] {

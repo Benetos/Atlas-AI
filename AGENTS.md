@@ -27,3 +27,4 @@ Do not re-litigate these. If a later concrete defect appears, backtrack then.
   land before TestFlight. Cooking uses existing recipes. Ship/corvette parts
   are in; assembly claims are out. Expedition archive UI can wait; expedition
   rows may still be packed.
+- **Pack schema:** Schema 2 only. No schema 1 compatibility or data migration.

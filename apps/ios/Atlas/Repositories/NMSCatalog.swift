@@ -39,7 +39,6 @@ protocol NMSCatalog: Sendable {
     func entities(type: String, limit: Int, offset: Int) async throws -> [Entity]
     func recipes(kind: String?, limit: Int, offset: Int) async throws -> [Recipe]
     func contentRecords(dataset: String, limit: Int, offset: Int) async throws -> [ContentRecord]
-    func hasFeatureTables() async throws -> Bool
     func specialistSummaries(_ query: SpecialistQuery) async throws -> [SpecialistSummary]
     func specialistRecord(
         feature: SpecialistFeature,
@@ -50,7 +49,6 @@ protocol NMSCatalog: Sendable {
 }
 
 extension NMSCatalog {
-    func hasFeatureTables() async throws -> Bool { false }
     func specialistSummaries(_ query: SpecialistQuery) async throws -> [SpecialistSummary] { [] }
     func specialistRecord(
         feature: SpecialistFeature,
@@ -136,10 +134,6 @@ struct SQLiteNMSCatalog: NMSCatalog {
 
     func contentRecords(dataset: String, limit: Int, offset: Int) async throws -> [ContentRecord] {
         try await run { store in try store.contentRecords(dataset: dataset, limit: limit, offset: offset) }
-    }
-
-    func hasFeatureTables() async throws -> Bool {
-        try await run { store in try store.hasFeatureTables() }
     }
 
     func specialistSummaries(_ query: SpecialistQuery) async throws -> [SpecialistSummary] {

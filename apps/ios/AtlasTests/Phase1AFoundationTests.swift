@@ -434,7 +434,7 @@ final class SavedArtifactsStoreTests: XCTestCase {
 private extension PackIdentity {
     static let fixture = PackIdentity(
         sourceCommitSHA: "142d9ffd8078944722243398202f22cbef47cd02",
-        packSchemaVersion: 1,
+        packSchemaVersion: 2,
         contractVersion: 1,
         generatedAt: "2026-08-31T04:30:33Z",
         packRole: "preview"

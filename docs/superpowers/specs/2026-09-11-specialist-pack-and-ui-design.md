@@ -23,11 +23,11 @@ exist so people are not staring at JSON.
 
 ## Pack
 
-- Schema version 2. Schema 1 packs remain readable until rebuilt.
+- Schema version 2 only. There are no schema 1 users to migrate.
 - Keep `nms_content_records` lossless.
 - Additive typed tables projected from each content payload at SQLite build.
 - Unknown fields stay in `extra_json`. Never drop a source field.
-- Capability is pack tables present, not app version.
+- Capability is schema 2. Do not keep a parallel schema 1 path.
 
 ## Non-goals
 

@@ -6,7 +6,6 @@ final class FeatureProjectionTests: XCTestCase {
         let store = try SQLiteNMSStore(fileURL: fixtureURL())
         let manifest = try store.manifest()
         XCTAssertEqual(manifest.packSchemaVersion, 2)
-        XCTAssertTrue(try store.hasFeatureTables())
 
         let fish = try XCTUnwrap(
             try store.specialistRecord(feature: .fish, id: "F_JELLYCHILD", sourceOrdinal: 0)

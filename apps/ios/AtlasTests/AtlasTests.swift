@@ -103,7 +103,7 @@ final class OfflineAtlasTests: XCTestCase {
         let store = try fullStore()
 
         let manifest = try store.manifest()
-        XCTAssertTrue([1, 2].contains(manifest.packSchemaVersion))
+        XCTAssertEqual(manifest.packSchemaVersion, 2)
         XCTAssertFalse(manifest.sourceCommitSHA.isEmpty)
 
         let ferrite = try store.searchEntities(
@@ -152,11 +152,8 @@ final class OfflineAtlasTests: XCTestCase {
         )
         XCTAssertNoThrow(try store.validateIntegrity())
         XCTAssertNoThrow(try store.validateReadOnlyBoundary())
-        if manifest.packSchemaVersion >= 2 {
-            XCTAssertTrue(try store.hasFeatureTables())
-            XCTAssertEqual(try store.specialistSummaries(SpecialistQuery(feature: .fish, limit: 1_000)).count, 226)
-            XCTAssertEqual(try store.specialistSummaries(SpecialistQuery(feature: .bait, limit: 1_000)).count, 621)
-        }
+        XCTAssertEqual(try store.specialistSummaries(SpecialistQuery(feature: .fish, limit: 1_000)).count, 226)
+        XCTAssertEqual(try store.specialistSummaries(SpecialistQuery(feature: .bait, limit: 1_000)).count, 621)
     }
 
     func testSearchIncludesMetadataAndFeatureCategoriesCanBeBrowsed() throws {
@@ -213,6 +210,10 @@ final class OfflineAtlasTests: XCTestCase {
     }
 
     func testManifestRejectsUnsupportedVersionsAndInvalidSourceSHA() throws {
+        try assertManifestRejected(
+            after: "update pack_manifest set pack_schema_version = 1",
+            containing: "unsupported schema version"
+        )
         try assertManifestRejected(
             after: "update pack_manifest set pack_schema_version = 99",
             containing: "unsupported schema version"
