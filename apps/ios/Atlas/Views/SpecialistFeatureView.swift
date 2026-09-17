@@ -5,13 +5,15 @@ struct SpecialistCollectionView: View {
     @Environment(AtlasRouter.self) private var router
     var feature: SpecialistFeature
     var usesLibraryTitle: Bool = false
+    var route: SpecialistRoute? = nil
 
     @State private var session: SpecialistCollectionModel
 
-    init(feature: SpecialistFeature, usesLibraryTitle: Bool = false) {
+    init(feature: SpecialistFeature, usesLibraryTitle: Bool = false, route: SpecialistRoute? = nil) {
         self.feature = feature
         self.usesLibraryTitle = usesLibraryTitle
-        _session = State(initialValue: SpecialistCollectionModel(feature: feature))
+        self.route = route
+        _session = State(initialValue: SpecialistCollectionModel(feature: feature, route: route))
     }
 
     var body: some View {
@@ -48,7 +50,10 @@ struct SpecialistCollectionView: View {
         .toolbar {
             if feature.supportsCompare {
                 Button("Compare") {
-                    Task { await session.openCompare(catalog: catalog) }
+                    Task {
+                        guard let catalog else { return }
+                        await session.openCompare(catalog: catalog)
+                    }
                 }
                 .disabled(session.compareIDs.count != 2 || catalog == nil)
             }

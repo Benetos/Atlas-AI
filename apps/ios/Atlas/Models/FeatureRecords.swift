@@ -1,6 +1,6 @@
 import Foundation
 
-enum SpecialistFeature: String, CaseIterable, Identifiable, Hashable, Sendable {
+enum SpecialistFeature: String, CaseIterable, Identifiable, Hashable, Codable, Sendable {
     case fish
     case bait
     case buildingParts = "building_parts"
@@ -100,6 +100,27 @@ enum SpecialistFeature: String, CaseIterable, Identifiable, Hashable, Sendable {
     }
 }
 
+enum PackedFishMembership {
+    static let anyTime = "Both"
+    static let night = "Night"
+    static let day = "Day"
+    static let anyBiome = "All"
+
+    static func matchesTime(_ packed: String, selected: String) -> Bool {
+        if selected == night || selected == day {
+            return packed == selected || packed == anyTime
+        }
+        return packed == selected
+    }
+
+    static func matchesBiome(_ packed: String, selected: String) -> Bool {
+        if selected == anyBiome {
+            return packed == anyBiome
+        }
+        return packed == selected || packed == anyBiome
+    }
+}
+
 struct SpecialistQuery: Equatable, Sendable {
     var feature: SpecialistFeature
     var search: String = ""
@@ -112,8 +133,71 @@ struct SpecialistQuery: Equatable, Sendable {
     var shipType: String?
     var category: String?
     var includeNotEnabled: Bool = false
+    var requiredEntityType: String?
+    var requiredGameID: String?
     var limit: Int = 60
     var offset: Int = 0
+}
+
+struct SpecialistRoute: Hashable, Codable, Sendable {
+    var feature: SpecialistFeature
+    var search: String = ""
+    var timeOfDay: String?
+    var biome: String?
+    var size: String?
+    var quality: String?
+    var needsStorm: Bool?
+    var usedFor: String?
+    var shipType: String?
+    var category: String?
+    var includeNotEnabled: Bool = false
+    var requiredEntityType: String?
+    var requiredGameID: String?
+
+    var query: SpecialistQuery {
+        SpecialistQuery(
+            feature: feature,
+            search: search,
+            timeOfDay: timeOfDay,
+            biome: biome,
+            size: size,
+            quality: quality,
+            needsStorm: needsStorm,
+            usedFor: usedFor,
+            shipType: shipType,
+            category: category,
+            includeNotEnabled: includeNotEnabled,
+            requiredEntityType: requiredEntityType,
+            requiredGameID: requiredGameID
+        )
+    }
+
+    var destination: AppDestination { .specialist(self) }
+
+    var chipLabel: String {
+        switch feature {
+        case .fish: "Open fish guide"
+        case .shipParts: "Open ship parts"
+        case .buildingParts: "Open building checklist"
+        case .corvetteParts: "Open corvette parts"
+        default: "Open \(feature.title.lowercased())"
+        }
+    }
+
+    var filterSummary: String {
+        var parts: [String] = []
+        if let timeOfDay, !timeOfDay.isEmpty { parts.append(timeOfDay) }
+        if let biome, !biome.isEmpty { parts.append(biome) }
+        if let size, !size.isEmpty { parts.append(size) }
+        if let quality, !quality.isEmpty { parts.append(quality) }
+        if needsStorm == true { parts.append("storm") }
+        if let usedFor, !usedFor.isEmpty { parts.append(usedFor) }
+        if let shipType, !shipType.isEmpty { parts.append(shipType) }
+        if let category, !category.isEmpty { parts.append(category) }
+        if !search.isEmpty { parts.append(search) }
+        if let requiredGameID, !requiredGameID.isEmpty { parts.append(requiredGameID) }
+        return parts.joined(separator: " · ")
+    }
 }
 
 struct SpecialistFilterOptions: Equatable, Sendable {

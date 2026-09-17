@@ -267,6 +267,24 @@ def fixture_import_dir(root: Path) -> Path:
                 "RequiresMissionActive": "",
                 "Biomes": ["Frozen", "Lush"],
                 "Mystery": "keep-me",
+                "Colour_R": "0.2",
+                "MissionMustAlsoBeSelected": "true",
+            }, separators=(",", ":")),
+            "source_commit_sha": COMMIT,
+        },
+        {
+            "dataset": "fish",
+            "external_id": "F_BOTHFISH",
+            "source_ordinal": "0",
+            "display_name": "Ice Bothfin",
+            "icon_source_path": "TEXTURES/UI/FRONTEND/ICONS/FISH/PRODUCT2.FISH.BOTH.DDS",
+            "payload": json.dumps({
+                "ProductID": "F_BOTHFISH",
+                "NameLower_Text": "Ice Bothfin",
+                "Quality": "Common",
+                "Size": "Medium",
+                "Time": "Both",
+                "Biomes": ["All"],
             }, separators=(",", ":")),
             "source_commit_sha": COMMIT,
         },
@@ -282,6 +300,106 @@ def fixture_import_dir(root: Path) -> Path:
                 "SizePercent": 2,
                 "UsedFor": "Night",
                 "Source": "product",
+            }, separators=(",", ":")),
+            "source_commit_sha": COMMIT,
+        },
+        {
+            "dataset": "building_parts",
+            "external_id": "PART_CORE",
+            "source_ordinal": "0",
+            "display_name": "Ferrite Frame",
+            "icon_source_path": "",
+            "payload": json.dumps({
+                "NameLower_Text": "Ferrite Frame",
+                "WikiCategory": "Structure",
+                "Requirements": [{"Id": "FUEL1", "Amount": "10"}],
+            }, separators=(",", ":")),
+            "source_commit_sha": COMMIT,
+        },
+        {
+            "dataset": "building_parts",
+            "external_id": "PART_HIDDEN",
+            "source_ordinal": "0",
+            "display_name": "Hidden Strut",
+            "icon_source_path": "",
+            "payload": json.dumps({
+                "NameLower_Text": "Hidden Strut",
+                "WikiCategory": "NotEnabled",
+            }, separators=(",", ":")),
+            "source_commit_sha": COMMIT,
+        },
+        {
+            "dataset": "ship_parts",
+            "external_id": "FIGHTER_COCKPIT",
+            "source_ordinal": "0",
+            "display_name": "Fighter Cockpit",
+            "icon_source_path": "",
+            "payload": json.dumps({
+                "NameLower_Text": "Fighter Cockpit",
+                "Type": "Fighter",
+                "Category": "Special",
+                "Description_Text": "A packed fighter cockpit.",
+            }, separators=(",", ":")),
+            "source_commit_sha": COMMIT,
+        },
+        {
+            "dataset": "stories",
+            "external_id": "STORY_GEK",
+            "source_ordinal": "0",
+            "display_name": "The Gek",
+            "icon_source_path": "",
+            "payload": json.dumps({
+                "CategoryText": "The Gek",
+                "Pages": [{
+                    "PageID": "PAGE_1",
+                    "PageText": "Ancient Plaque",
+                    "Entries": [{
+                        "TitleText": "First Spawn",
+                        "EntryText": "We are the masters of galaxies.",
+                    }],
+                }],
+            }, separators=(",", ":")),
+            "source_commit_sha": COMMIT,
+        },
+        {
+            "dataset": "legacy_items",
+            "external_id": "BAIT_MEAT_1",
+            "source_ordinal": "0",
+            "display_name": "Creature Pellets Legacy",
+            "icon_source_path": "",
+            "payload": json.dumps({
+                "NameLower_Text": "Creature Pellets Legacy",
+                "ProductId": "BAIT_MEAT_1",
+                "ConvertID": "BAIT_BASIC",
+                "ConvertRatio": "10",
+                "ConvertName": "Creature Pellets",
+            }, separators=(",", ":")),
+            "source_commit_sha": COMMIT,
+        },
+        {
+            "dataset": "fossils",
+            "external_id": "FOSSIL_HEAD",
+            "source_ordinal": "0",
+            "display_name": "Ancient Skull",
+            "icon_source_path": "",
+            "payload": json.dumps({
+                "NameLower_Text": "Ancient Skull",
+                "Category": "Special",
+                "Type": "ExhibitBone",
+                "FossilCategory": "Head",
+            }, separators=(",", ":")),
+            "source_commit_sha": COMMIT,
+        },
+        {
+            "dataset": "special_rewards",
+            "external_id": "REWARD_TWITCH",
+            "source_ordinal": "0",
+            "display_name": "Twitch Helmet",
+            "icon_source_path": "",
+            "payload": json.dumps({
+                "ID": "REWARD_TWITCH",
+                "RewardName": "Twitch Helmet",
+                "RewardType": ["Twitch", "Expedition"],
             }, separators=(",", ":")),
             "source_commit_sha": COMMIT,
         },
@@ -364,7 +482,7 @@ def fixture_import_dir(root: Path) -> Path:
             "localizations": 2,
             "recipes": 3,
             "recipe_ingredients": 3,
-            "content_records": 3,
+            "content_records": len(content),
         },
         "validation": {"passed": True, "errors": [], "warnings": []},
     }
@@ -488,7 +606,8 @@ class BuildNmsSqliteTests(unittest.TestCase):
                 2,
             )
             fish = connection.execute(
-                "select title, time_of_day, needs_storm, extra_json from nms_fish"
+                "select title, time_of_day, needs_storm, extra_json from nms_fish where external_id = ?",
+                ("F_JELLYCHILD",),
             ).fetchone()
             self.assertEqual(fish[0], "Child of Aquarius")
             self.assertEqual(fish[1], "Night")
@@ -498,14 +617,89 @@ class BuildNmsSqliteTests(unittest.TestCase):
             biomes = [
                 row[0]
                 for row in connection.execute(
-                    "select biome from nms_fish_biomes order by position"
+                    "select biome from nms_fish_biomes where external_id = ? order by position",
+                    ("F_JELLYCHILD",),
                 )
             ]
             self.assertEqual(biomes, ["Frozen", "Lush"])
             bait = connection.execute(
-                "select title, used_for, rarity_percent from nms_bait"
+                "select title, used_for, rarity_percent from nms_bait where external_id = ?",
+                ("NANOTUBES",),
             ).fetchone()
             self.assertEqual(bait, ("Carbon Nanotubes", "Night", "6"))
+            extra = json.loads(
+                connection.execute(
+                    "select extra_json from nms_fish where external_id = ?",
+                    ("F_JELLYCHILD",),
+                ).fetchone()[0]
+            )
+            self.assertEqual(extra.get("Mystery"), "keep-me")
+            self.assertEqual(extra.get("Colour_R"), "0.2")
+            self.assertEqual(extra.get("MissionMustAlsoBeSelected"), "true")
+            story = connection.execute(
+                """
+                select p.title, e.title, e.body
+                  from nms_story_pages p
+                  join nms_story_entries e
+                    on e.external_id = p.external_id
+                   and e.page_position = p.position
+                 where p.external_id = ?
+                """,
+                ("STORY_GEK",),
+            ).fetchone()
+            self.assertEqual(story, ("Ancient Plaque", "First Spawn", "We are the masters of galaxies."))
+            page_extra = json.loads(
+                connection.execute(
+                    "select extra_json from nms_story_pages where external_id = ?",
+                    ("STORY_GEK",),
+                ).fetchone()[0]
+            )
+            self.assertEqual(page_extra.get("PageID"), "PAGE_1")
+            legacy = connection.execute(
+                "select converts_to, conversion_ratio, extra_json from nms_legacy_items"
+            ).fetchone()
+            self.assertEqual(legacy[0], "BAIT_BASIC")
+            self.assertEqual(legacy[1], "10")
+            self.assertEqual(json.loads(legacy[2]).get("ConvertName"), "Creature Pellets")
+            fossil = connection.execute(
+                "select category, extra_json from nms_fossils"
+            ).fetchone()
+            self.assertEqual(fossil[0], "Head")
+            fossil_extra = json.loads(fossil[1])
+            self.assertEqual(fossil_extra.get("Category"), "Special")
+            self.assertEqual(fossil_extra.get("Type"), "ExhibitBone")
+            self.assertNotIn("FossilCategory", fossil_extra)
+            sources = [
+                row[0]
+                for row in connection.execute(
+                    "select source_label from nms_special_reward_sources order by position"
+                )
+            ]
+            self.assertEqual(sources, ["Twitch", "Expedition"])
+            ship_extra = json.loads(
+                connection.execute(
+                    "select extra_json from nms_ship_parts where external_id = ?",
+                    ("FIGHTER_COCKPIT",),
+                ).fetchone()[0]
+            )
+            self.assertEqual(ship_extra.get("Description_Text"), "A packed fighter cockpit.")
+            requirement = connection.execute(
+                "select entity_type, game_id from nms_building_part_requirements"
+            ).fetchone()
+            self.assertIsNone(requirement[0])
+            self.assertEqual(requirement[1], "FUEL1")
+            self.assertEqual(
+                connection.execute("select count(*) from nms_fish_biomes").fetchone()[0],
+                3,
+            )
+            self.assertEqual(
+                connection.execute("select count(*) from nms_story_pages").fetchone()[0],
+                1,
+            )
+            self.assertEqual(
+                connection.execute("select count(*) from nms_story_entries").fetchone()[0],
+                1,
+            )
         finally:
             connection.close()
 

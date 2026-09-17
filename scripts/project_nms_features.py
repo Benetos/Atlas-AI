@@ -41,6 +41,7 @@ FEATURE_DDL = """
         create index nms_fish_quality_idx on nms_fish (quality);
         create index nms_fish_time_idx on nms_fish (time_of_day);
         create index nms_fish_size_idx on nms_fish (size);
+        create index nms_fish_storm_idx on nms_fish (needs_storm);
 
         create table nms_fish_biomes (
           external_id text not null,
@@ -84,9 +85,13 @@ FEATURE_DDL = """
           entity_type text,
           game_id text,
           amount text,
+          title text,
           extra_json text not null default '{}',
           primary key (external_id, source_ordinal, position)
         );
+        create index nms_building_parts_category_idx on nms_building_parts (wiki_category);
+        create index nms_building_part_requirements_material_idx
+          on nms_building_part_requirements (game_id, entity_type);
 
         create table nms_ship_parts (
           external_id text not null,
@@ -102,6 +107,7 @@ FEATURE_DDL = """
           primary key (external_id, source_ordinal)
         );
         create index nms_ship_parts_type_idx on nms_ship_parts (ship_type);
+        create index nms_ship_parts_category_idx on nms_ship_parts (category);
 
         create table nms_corvette_parts (
           external_id text not null,
@@ -122,6 +128,7 @@ FEATURE_DDL = """
           category text not null,
           primary key (external_id, source_ordinal, position)
         );
+        create index nms_corvette_part_categories_idx on nms_corvette_part_categories (category);
 
         create table nms_corvette_part_requirements (
           external_id text not null,
@@ -130,6 +137,7 @@ FEATURE_DDL = """
           entity_type text,
           game_id text,
           amount text,
+          title text,
           extra_json text not null default '{}',
           primary key (external_id, source_ordinal, position)
         );
@@ -150,6 +158,7 @@ FEATURE_DDL = """
           source_label text not null,
           primary key (external_id, source_ordinal, position)
         );
+        create index nms_special_reward_sources_idx on nms_special_reward_sources (source_label);
 
         create table nms_special_purchases (
           external_id text not null,
@@ -169,6 +178,7 @@ FEATURE_DDL = """
           extra_json text not null default '{}',
           primary key (external_id, source_ordinal)
         );
+        create index nms_fossils_category_idx on nms_fossils (category);
 
         create table nms_legacy_items (
           external_id text not null,
@@ -291,7 +301,7 @@ def _requirement_identity(item: dict[str, Any]) -> tuple[str | None, str | None]
         else:
             entity_type = "product"
     else:
-        entity_type = "product" if game_id else None
+        entity_type = None
     return entity_type, game_id
 
 
@@ -367,11 +377,9 @@ def _ids(record: dict[str, Any]) -> tuple[str, int]:
 
 def _project_fish(connection: Any, record: dict[str, Any], payload: dict[str, Any], counts: dict[str, int]) -> None:
     known = {
-        "ProductID", "Name", "Name_Text", "NameLower", "NameLower_Text", "Subtitle",
-        "Subtitle_Text", "Description", "Description_Text", "Icon_Filename",
-        "Quality", "Size", "Time", "NeedsStorm", "RequiresMissionActive",
-        "MissionSeed", "MissionMustAlsoBeSelected", "MissionCatchChanceOverride",
-        "Biomes", "Colour_R", "Colour_G", "Colour_B", "Colour_A",
+        "ProductID", "NameLower_Text", "Subtitle_Text", "Description_Text",
+        "Icon_Filename", "Quality", "Size", "Time", "NeedsStorm",
+        "RequiresMissionActive", "MissionSeed", "Biomes",
     }
     external_id, ordinal = _ids(record)
     connection.execute(
@@ -418,8 +426,8 @@ def _project_fish(connection: Any, record: dict[str, Any], payload: dict[str, An
 
 def _project_bait(connection: Any, record: dict[str, Any], payload: dict[str, Any], counts: dict[str, int]) -> None:
     known = {
-        "NameLower_Text", "Icon_Filename", "Colour_R", "Colour_G", "Colour_B",
-        "Colour_A", "RarityPercent", "SizePercent", "UsedFor", "Source",
+        "NameLower_Text", "Icon_Filename", "RarityPercent", "SizePercent",
+        "UsedFor", "Source",
     }
     external_id, ordinal = _ids(record)
     connection.execute(
@@ -447,7 +455,7 @@ def _project_bait(connection: Any, record: dict[str, Any], payload: dict[str, An
 def _project_building_part(connection: Any, record: dict[str, Any], payload: dict[str, Any], counts: dict[str, int]) -> None:
     known = {
         "NameLower_Text", "Name_Text", "Icon_Filename", "WikiCategory",
-        "Requirements", "Requirement", "Colour_R", "Colour_G", "Colour_B", "Colour_A",
+        "Requirements", "Requirement",
     }
     wiki = _text(payload.get("WikiCategory"))
     external_id, ordinal = _ids(record)
@@ -474,8 +482,8 @@ def _project_building_part(connection: Any, record: dict[str, Any], payload: dic
         connection.execute(
             """
             insert into nms_building_part_requirements (
-              external_id, source_ordinal, position, entity_type, game_id, amount, extra_json
-            ) values (?, ?, ?, ?, ?, ?, ?)
+              external_id, source_ordinal, position, entity_type, game_id, amount, title, extra_json
+            ) values (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 external_id,
@@ -484,7 +492,15 @@ def _project_building_part(connection: Any, record: dict[str, Any], payload: dic
                 entity_type,
                 game_id,
                 _text(item.get("Amount") or item.get("Quantity")),
-                _extra(item, {"Id", "ID", "ProductId", "ProductID", "SubstanceId", "Type", "EntityType", "InventoryType", "Amount", "Quantity"}),
+                _text(item.get("NameLower_Text") or item.get("Name_Text")),
+                _extra(
+                    item,
+                    {
+                        "Id", "ID", "ProductId", "ProductID", "SubstanceId", "Type",
+                        "EntityType", "InventoryType", "Amount", "Quantity",
+                        "NameLower_Text", "Name_Text",
+                    },
+                ),
             ),
         )
         counts["building_part_requirements"] += 1
@@ -492,10 +508,8 @@ def _project_building_part(connection: Any, record: dict[str, Any], payload: dic
 
 def _project_ship_part(connection: Any, record: dict[str, Any], payload: dict[str, Any], counts: dict[str, int]) -> None:
     known = {
-        "ProductId", "Name", "Name_Text", "NameLower", "NameLower_Text", "Subtitle",
-        "Subtitle_Text", "Description", "Description_Text", "BaseValue", "Level",
-        "Icon_Filename", "Category", "Type", "Rarity", "Legality", "Consumable",
-        "ChargeValue", "StackMultiplier", "Colour_R", "Colour_G", "Colour_B", "Colour_A",
+        "NameLower_Text", "Name_Text", "Subtitle_Text", "BaseValue",
+        "Icon_Filename", "Category", "Type", "Rarity",
     }
     external_id, ordinal = _ids(record)
     connection.execute(
@@ -524,8 +538,7 @@ def _project_ship_part(connection: Any, record: dict[str, Any], payload: dict[st
 def _project_corvette_part(connection: Any, record: dict[str, Any], payload: dict[str, Any], counts: dict[str, int]) -> None:
     known = {
         "NameLower_Text", "Name_Text", "Icon_Filename", "WikiCategory", "Category",
-        "Categories", "Requirements", "Requirement", "Colour_R", "Colour_G",
-        "Colour_B", "Colour_A",
+        "Categories", "Requirements", "Requirement",
     }
     wiki = _text(payload.get("WikiCategory"))
     external_id, ordinal = _ids(record)
@@ -570,8 +583,8 @@ def _project_corvette_part(connection: Any, record: dict[str, Any], payload: dic
         connection.execute(
             """
             insert into nms_corvette_part_requirements (
-              external_id, source_ordinal, position, entity_type, game_id, amount, extra_json
-            ) values (?, ?, ?, ?, ?, ?, ?)
+              external_id, source_ordinal, position, entity_type, game_id, amount, title, extra_json
+            ) values (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 external_id,
@@ -580,14 +593,25 @@ def _project_corvette_part(connection: Any, record: dict[str, Any], payload: dic
                 entity_type,
                 game_id,
                 _text(item.get("Amount") or item.get("Quantity")),
-                _extra(item, {"Id", "ID", "ProductId", "ProductID", "SubstanceId", "Type", "Amount", "Quantity"}),
+                _text(item.get("NameLower_Text") or item.get("Name_Text")),
+                _extra(
+                    item,
+                    {
+                        "Id", "ID", "ProductId", "ProductID", "SubstanceId", "Type",
+                        "EntityType", "InventoryType", "Amount", "Quantity",
+                        "NameLower_Text", "Name_Text",
+                    },
+                ),
             ),
         )
         counts["corvette_part_requirements"] += 1
 
 
 def _project_reward(connection: Any, record: dict[str, Any], payload: dict[str, Any], counts: dict[str, int]) -> None:
-    known = {"RewardName", "NameLower_Text", "Name_Text", "Icon_Filename", "Sources", "Source"}
+    known = {
+        "ID", "RewardName", "NameLower_Text", "Name_Text", "Icon_Filename",
+        "Sources", "Source", "RewardType",
+    }
     external_id, ordinal = _ids(record)
     connection.execute(
         """
@@ -604,7 +628,7 @@ def _project_reward(connection: Any, record: dict[str, Any], payload: dict[str, 
         ),
     )
     counts["special_rewards"] += 1
-    sources = payload.get("Sources") or payload.get("Source") or []
+    sources = payload.get("Sources") or payload.get("Source") or payload.get("RewardType") or []
     if isinstance(sources, str):
         sources = [sources]
     if not isinstance(sources, list):
@@ -668,8 +692,10 @@ def _project_fossil(connection: Any, record: dict[str, Any], payload: dict[str, 
         payload,
         counts,
         extra_fields=("category",),
-        extra_values=(_text(payload.get("Category") or payload.get("Type")),),
-        known={"NameLower_Text", "Name_Text", "Icon_Filename", "Category", "Type"},
+        extra_values=(_text(payload.get("FossilCategory") or payload.get("Category") or payload.get("Type")),),
+        known={
+            "NameLower_Text", "Name_Text", "Icon_Filename", "FossilCategory",
+        },
     )
 
 
@@ -683,12 +709,16 @@ def _project_legacy(connection: Any, record: dict[str, Any], payload: dict[str, 
         counts,
         extra_fields=("converts_to", "conversion_ratio"),
         extra_values=(
-            _text(payload.get("ConvertTo") or payload.get("NewId") or payload.get("ProductId")),
-            _text(payload.get("Ratio") or payload.get("ConversionRatio") or payload.get("Value")),
+            _text(payload.get("ConvertID") or payload.get("ConvertTo") or payload.get("NewId")),
+            _text(
+                payload.get("ConvertRatio")
+                or payload.get("Ratio")
+                or payload.get("ConversionRatio")
+                or payload.get("Value")
+            ),
         ),
         known={
-            "NameLower_Text", "Name_Text", "Icon_Filename", "ConvertTo", "NewId",
-            "ProductId", "Ratio", "ConversionRatio", "Value",
+            "NameLower_Text", "Name_Text", "Icon_Filename", "ConvertID", "ConvertRatio",
         },
     )
 
@@ -717,7 +747,10 @@ def _project_expedition(connection: Any, record: dict[str, Any], payload: dict[s
 
 
 def _project_story(connection: Any, record: dict[str, Any], payload: dict[str, Any], counts: dict[str, int]) -> None:
-    known = {"CategoryText", "NameLower_Text", "Name_Text", "PageIcon", "Icon_Filename", "Pages"}
+    known = {
+        "CategoryText", "CategoryID", "NameLower_Text", "Name_Text", "PageIcon",
+        "IconOn", "IconOff", "Icon_Filename", "Pages",
+    }
     external_id, ordinal = _ids(record)
     connection.execute(
         """
@@ -750,8 +783,8 @@ def _project_story(connection: Any, record: dict[str, Any], payload: dict[str, A
                 external_id,
                 ordinal,
                 page_position,
-                _text(page.get("Title") or page.get("Name") or page.get("PageTitle")),
-                _extra(page, {"Title", "Name", "PageTitle", "Entries"}),
+                _text(page.get("PageText") or page.get("Title") or page.get("Name") or page.get("PageTitle")),
+                _extra(page, {"Title", "Name", "PageTitle", "PageText", "PageIcon", "Entries"}),
             ),
         )
         counts["story_pages"] += 1
@@ -772,9 +805,15 @@ def _project_story(connection: Any, record: dict[str, Any], payload: dict[str, A
                     ordinal,
                     page_position,
                     entry_position,
-                    _text(entry.get("Title") or entry.get("Name")),
-                    _text(entry.get("Text") or entry.get("Body") or entry.get("Entry")),
-                    _extra(entry, {"Title", "Name", "Text", "Body", "Entry"}),
+                    _text(entry.get("TitleText") or entry.get("Title") or entry.get("Name")),
+                    _text(entry.get("EntryText") or entry.get("Text") or entry.get("Body") or entry.get("Entry")),
+                    _extra(
+                        entry,
+                        {
+                            "Title", "Name", "TitleText", "TitleID", "Text", "Body",
+                            "Entry", "EntryText", "EntryID",
+                        },
+                    ),
                 ),
             )
             counts["story_entries"] += 1

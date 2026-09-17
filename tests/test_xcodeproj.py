@@ -149,6 +149,9 @@ class AtlasXcodeprojTests(unittest.TestCase):
         self.assertIn("EXCLUDED_SOURCE_FILE_NAMES = (", release)
         self.assertIn('"nms-reference.sqlite",', release)
         self.assertIn('"pack-manifest.json",', release)
+        self.assertIn('"icons",', release)
+        self.assertIn("/* icons in Resources */", self.pbx)
+        self.assertIn("path = icons;", self.pbx)
 
     def test_test_target_is_explicit_and_hosted_by_atlas(self) -> None:
         atlas_id, _ = native_target(self.pbx, "Atlas")

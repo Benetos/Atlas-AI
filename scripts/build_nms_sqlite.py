@@ -54,6 +54,29 @@ NUMERIC_FIELDS = {
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_]+")
 SOURCE_COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 PACK_ROLES = {"preview", "production"}
+PRODUCTION_FEATURE_TABLE_COUNTS = {
+    "nms_fish": 226,
+    "nms_bait": 621,
+    "nms_building_parts": 1_654,
+    "nms_corvette_parts": 633,
+    "nms_expeditions": 21,
+    "nms_fossils": 143,
+    "nms_legacy_items": 20,
+    "nms_building_blueprints": 217,
+    "nms_ship_parts": 284,
+    "nms_special_purchases": 332,
+    "nms_special_rewards": 594,
+    "nms_stories": 7,
+}
+PRODUCTION_CHILD_TABLE_COUNTS = {
+    "nms_fish_biomes": 331,
+    "nms_building_part_requirements": 1_571,
+    "nms_corvette_part_categories": 636,
+    "nms_corvette_part_requirements": 110,
+    "nms_story_pages": 40,
+    "nms_story_entries": 592,
+    "nms_special_reward_sources": 657,
+}
 
 
 def sha256_file(path: Path) -> str:
@@ -500,6 +523,40 @@ def validate_pack_database(
                 f"rows matching {canonical_table}, found {actual}"
             )
 
+    feature_tables = {
+        "bait": "nms_bait",
+        "building_parts": "nms_building_parts",
+        "corvette_parts": "nms_corvette_parts",
+        "expeditions": "nms_expeditions",
+        "fish": "nms_fish",
+        "fossils": "nms_fossils",
+        "legacy_items": "nms_legacy_items",
+        "purchaseable_building_blueprints": "nms_building_blueprints",
+        "ship_parts": "nms_ship_parts",
+        "special_purchases": "nms_special_purchases",
+        "special_rewards": "nms_special_rewards",
+        "stories": "nms_stories",
+    }
+    for dataset, table in feature_tables.items():
+        expected = int(
+            connection.execute(
+                "select count(*) from nms_content_records where dataset = ?",
+                (dataset,),
+            ).fetchone()[0]
+        )
+        present = connection.execute(
+            "select 1 from sqlite_master where type = 'table' and name = ?",
+            (table,),
+        ).fetchone()
+        if present is None:
+            raise ValueError(f"SQLite is missing required feature table {table}")
+        actual = int(connection.execute(f"select count(*) from {table}").fetchone()[0])
+        if actual != expected:
+            raise ValueError(
+                f"Feature projection incomplete for {dataset}: "
+                f"{expected} content records, {actual} {table} rows"
+            )
+
     quick_check = [row[0] for row in connection.execute("pragma quick_check")]
     if quick_check != ["ok"]:
         raise ValueError(f"SQLite quick_check failed: {quick_check}")
@@ -507,6 +564,25 @@ def validate_pack_database(
     foreign_key_errors = connection.execute("pragma foreign_key_check").fetchall()
     if foreign_key_errors:
         raise ValueError(f"SQLite foreign key check failed: {foreign_key_errors[:10]}")
+
+
+def validate_production_feature_inventory(connection: sqlite3.Connection) -> None:
+    expected = {
+        **PRODUCTION_FEATURE_TABLE_COUNTS,
+        **PRODUCTION_CHILD_TABLE_COUNTS,
+    }
+    for table, expected_count in expected.items():
+        present = connection.execute(
+            "select 1 from sqlite_master where type = 'table' and name = ?",
+            (table,),
+        ).fetchone()
+        if present is None:
+            raise ValueError(f"SQLite is missing required feature table {table}")
+        actual = int(connection.execute(f"select count(*) from {table}").fetchone()[0])
+        if actual != expected_count:
+            raise ValueError(
+                f"SQLite feature table count {table}: expected {expected_count}, found {actual}"
+            )
 
 
 def publish_pack_outputs(

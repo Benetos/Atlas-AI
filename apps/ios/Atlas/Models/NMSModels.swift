@@ -114,6 +114,10 @@ struct Recipe: Identifiable, Hashable, Sendable {
         if let outputTitle, !outputTitle.isEmpty { return outputTitle }
         return recipeID
     }
+
+    func planDestination(quantity: Int = 1) -> AppDestination {
+        .recipePlan(type: outputEntityType, id: outputGameID, quantity: quantity)
+    }
 }
 
 struct RecipeIngredient: Identifiable, Hashable, Sendable {

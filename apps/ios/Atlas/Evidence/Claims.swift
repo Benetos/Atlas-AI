@@ -12,6 +12,7 @@ enum ClaimKind: String, Equatable, Sendable, Hashable, CaseIterable {
     case noMatch
     case derivedTotal
     case packFailure
+    case specialistBrowse
 }
 
 struct FactRef: Equatable, Sendable, Hashable {
@@ -44,6 +45,7 @@ enum FollowUpIntent: Equatable, Sendable, Hashable {
     case usesFor(type: String, id: String)
     case recipesFor(type: String, id: String)
     case plan(type: String, id: String, quantity: Int)
+    case openSpecialist(SpecialistRoute)
 
     var chipLabel: String {
         switch self {
@@ -59,6 +61,8 @@ enum FollowUpIntent: Equatable, Sendable, Hashable {
             return "How do I make it?"
         case .plan(let _, let _, let quantity):
             return quantity == 1 ? "Open plan" : "Open \(quantity)× plan"
+        case .openSpecialist(let route):
+            return route.chipLabel
         }
     }
 }
@@ -124,7 +128,7 @@ struct ClaimValidator: Sendable {
         guard let kind = claim.kind else {
             throw ClaimValidationError.unsupportedKind(claim.kindName)
         }
-        if kind != .noMatch && kind != .packFailure && claim.facts.isEmpty {
+        if kind != .noMatch && kind != .packFailure && kind != .specialistBrowse && claim.facts.isEmpty {
             throw ClaimValidationError.missingFact
         }
         var records: [EvidenceRecord] = []
@@ -218,6 +222,19 @@ struct DeterministicTurnPlanner: ProposedTurnPlanning {
             )
         }
 
+        if queryPlan.shouldBrowseSpecialist,
+           let route = queryPlan.resolvedSpecialistRoute(matching: entities.compactMap { record in
+               if case .entity(let entity) = record.payload { return entity }
+               return nil
+           }) {
+            return ProposedTurnPlan(
+                claims: [ProposedClaim(kind: .specialistBrowse, facts: [])],
+                followUps: [.openSpecialist(route)],
+                actions: [.filter(route)],
+                tone: nil
+            )
+        }
+
         if entities.isEmpty && recipes.isEmpty && derived.isEmpty && content.isEmpty && web.isEmpty {
             var followUps: [FollowUpIntent] = []
             if queryPlan.requestsWeb {
@@ -286,6 +303,17 @@ struct DeterministicTurnPlanner: ProposedTurnPlanning {
                     )
                 )
             }
+            if queryPlan.shouldBrowseRecipes,
+               let recipeRecord = recipes.first,
+               case .recipe(let recipe) = recipeRecord.payload,
+               queryPlan.operation == .cooking || recipe.recipeKind == "cooking" {
+                followUps.append(
+                    .plan(type: recipe.outputEntityType, id: recipe.outputGameID, quantity: 1)
+                )
+                actions.append(
+                    .plan(type: recipe.outputEntityType, id: recipe.outputGameID, quantity: 1)
+                )
+            }
         } else if let entityRecord = entities.first, case .entity(let entity) = entityRecord.payload {
             claims.append(
                 ProposedClaim(
@@ -311,7 +339,7 @@ struct DeterministicTurnPlanner: ProposedTurnPlanning {
                 } else {
                     claims.append(contentsOf: recipeClaims(kind: .recipeProduces, recipes: recipes))
                 }
-            case .lookup, .browseEntities, .browseRecipes:
+            case .lookup, .browseEntities, .browseRecipes, .browseSpecialist:
                 break
             }
             actions.append(.open(entityRecord.recordKey))

@@ -42,6 +42,8 @@
 		CFD96DC4137CE99CB3DA0012 /* Full pack-manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = E83A5F20B7C14D69A2E40F36 /* Full pack-manifest.json */; };
 		E1E669DA4B769B73AAA7F246 /* AtlasDownloader.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = 893FAB5E3E75A53C47F22848 /* AtlasDownloader.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E6B5EC62A7CB768A9967BD73 /* Full nms-reference.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = D42C7E91A8B34F65C0D29E17 /* Full nms-reference.sqlite */; };
+		5A1C8E4B7F2D6039A1B6C8D0 /* icons in Resources */ = {isa = PBXBuildFile; fileRef = 9F3D6A2C1B8E4057C4D9A0E6 /* icons */; };
+		2E8B5C1A9D4F7036B1A7E4C8 /* FeatureHandoffTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C4A91E2B6D04F18A3C5E9B1 /* FeatureHandoffTests.swift */; };
 		EED9A60C47DC11A86D5390B5 /* InfoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C63324E27403782003C8AAC8 /* InfoView.swift */; };
 		96F71BB7BE08C7E7053D31F0 /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 722C76C93E57235136E9A951 /* AppServices.swift */; };
 		35E2A45485C8F1D603000D0A /* FeatureModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A577E4F56338B62ADBBCBE82 /* FeatureModels.swift */; };
@@ -137,6 +139,8 @@
 		D149A922C4CF4E1037C57E5A /* RecipeDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeDetailView.swift; sourceTree = "<group>"; };
 		D1A993F63584B0AAFACA621D /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 		D42C7E91A8B34F65C0D29E17 /* Full nms-reference.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = "nms-reference.sqlite"; sourceTree = "<group>"; };
+		9F3D6A2C1B8E4057C4D9A0E6 /* icons */ = {isa = PBXFileReference; lastKnownFileType = folder; path = icons; sourceTree = "<group>"; };
+		7C4A91E2B6D04F18A3C5E9B1 /* FeatureHandoffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureHandoffTests.swift; sourceTree = "<group>"; };
 		EBE3878953E81D1C72252EE2 /* EntityDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntityDetailView.swift; sourceTree = "<group>"; };
 		E83A5F20B7C14D69A2E40F36 /* Full pack-manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "pack-manifest.json"; sourceTree = "<group>"; };
 		EC959AC599847BFB9115E668 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -209,6 +213,7 @@
 				762AFB8CAED3123194ED369D /* Phase1BFoundationTests.swift */,
 				E851206C3F1B82AE507D9124 /* RecipeGraphEngineTests.swift */,
 				4D8A1C5E9B2F7036E1A4C8D2 /* FeatureProjectionTests.swift */,
+				7C4A91E2B6D04F18A3C5E9B1 /* FeatureHandoffTests.swift */,
 				90264F659BF01F6AB890BCAF /* AtlasTests.swift */,
 				67828BA08DAEC116C2662ABE /* Fixtures */,
 			);
@@ -287,6 +292,7 @@
 			children = (
 				D42C7E91A8B34F65C0D29E17 /* Full nms-reference.sqlite */,
 				E83A5F20B7C14D69A2E40F36 /* Full pack-manifest.json */,
+				9F3D6A2C1B8E4057C4D9A0E6 /* icons */,
 			);
 			name = "Generated Full Pack";
 			path = ../../build/nms-sqlite;
@@ -580,6 +586,7 @@
 				B7A17B31F1019A71EF63B83C /* Assets.xcassets in Resources */,
 				E6B5EC62A7CB768A9967BD73 /* Full nms-reference.sqlite in Resources */,
 				CFD96DC4137CE99CB3DA0012 /* Full pack-manifest.json in Resources */,
+				5A1C8E4B7F2D6039A1B6C8D0 /* icons in Resources */,
 				1CE388F77F4D537087E737CC /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -652,6 +659,7 @@
 				D5F170F764B3752B5C5A52D5 /* Phase1BFoundationTests.swift in Sources */,
 				458E86C29581E804B6D3F78A /* RecipeGraphEngineTests.swift in Sources */,
 				1E7C3A9F5D8B4026C1A4E9B3 /* FeatureProjectionTests.swift in Sources */,
+				2E8B5C1A9D4F7036B1A7E4C8 /* FeatureHandoffTests.swift in Sources */,
 				CD0476434D4B6F1578C6E90F /* AtlasTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -864,6 +872,7 @@
 				EXCLUDED_SOURCE_FILE_NAMES = (
 					"nms-reference.sqlite",
 					"pack-manifest.json",
+					"icons",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Atlas/Info.plist;

@@ -24,6 +24,7 @@ struct AtlasQueryPlan: Equatable, Sendable {
         case uses
         case browseEntities
         case browseRecipes
+        case browseSpecialist
     }
 
     let originalPrompt: String
@@ -33,13 +34,15 @@ struct AtlasQueryPlan: Equatable, Sendable {
     let entityType: String?
     let localQuery: String?
     let externalQuery: String
+    let specialistRoute: SpecialistRoute?
 
     var recipeKind: String? { operation?.rawValue }
     var requestsWeb: Bool { source == .web }
     var requestsLive: Bool { source == .live }
 
     var shouldSearchRecipes: Bool {
-        operation != nil || goal == .recipe || goal == .uses || goal == .browseRecipes
+        if shouldBrowseSpecialist { return false }
+        return operation != nil || goal == .recipe || goal == .uses || goal == .browseRecipes
     }
 
     var shouldBrowseRecipes: Bool {
@@ -47,6 +50,19 @@ struct AtlasQueryPlan: Equatable, Sendable {
     }
 
     var shouldBrowseEntities: Bool { goal == .browseEntities }
+    var shouldBrowseSpecialist: Bool { goal == .browseSpecialist }
+
+    func resolvedSpecialistRoute(matching entities: [Entity] = []) -> SpecialistRoute? {
+        guard var route = specialistRoute else { return nil }
+        if route.feature == .buildingParts, route.requiredGameID == nil {
+            let matches = entities.filter { exactlyMatches($0) }
+            if let entity = matches.first {
+                route.requiredGameID = entity.gameID
+                route.requiredEntityType = entity.entityType
+            }
+        }
+        return route
+    }
 
     func exactlyMatches(_ entity: Entity) -> Bool {
         let names = [entity.title, entity.gameID].map(Self.normalizedName)
@@ -102,6 +118,7 @@ struct AtlasQueryPlan: Equatable, Sendable {
         }
         let searchableLower = searchableTokens.map { $0.lowercased() }
         localQuery = searchableTokens.isEmpty ? nil : searchableTokens.joined(separator: " ")
+        specialistRoute = Self.specialistRoute(from: normalized)
 
         let recipeLanguage = !Set(lowerTokens).isDisjoint(with: Self.recipeTerms)
         let usesLanguage = lowerPrompt.contains("used in")
@@ -116,7 +133,9 @@ struct AtlasQueryPlan: Equatable, Sendable {
         )
         let broadEntityQuery = resolvedEntityType != nil && searchableLower.isEmpty
 
-        if broadRecipeQuery {
+        if let specialistRoute {
+            goal = .browseSpecialist
+        } else if broadRecipeQuery {
             goal = .browseRecipes
         } else if usesLanguage {
             goal = .uses
@@ -182,6 +201,111 @@ struct AtlasQueryPlan: Equatable, Sendable {
         "search live atlas",
         "live atlas",
     ]
+
+    private static let packedBiomes: [(phrase: String, value: String)] = [
+        ("gas giant", "GasGiant"),
+        ("waterworld", "Waterworld"),
+        ("radioactive", "Radioactive"),
+        ("scorched", "Scorched"),
+        ("frozen", "Frozen"),
+        ("barren", "Barren"),
+        ("swamp", "Swamp"),
+        ("toxic", "Toxic"),
+        ("lush", "Lush"),
+        ("lava", "Lava"),
+        ("weird", "Weird"),
+        ("red", "Red"),
+        ("green", "Green"),
+        ("blue", "Blue"),
+    ]
+
+    private static let packedShipTypes = ["Fighter", "Hauler", "Explorer", "Solar", "Reactor"]
+    private static let packedShipRoles = ["Cockpit", "Wings", "Fuselage", "Thruster", "Booster"]
+
+    private static func specialistRoute(from prompt: String) -> SpecialistRoute? {
+        let lower = prompt.lowercased()
+        if let building = buildingSpecialist(from: prompt, lower: lower) {
+            return building
+        }
+        if let ship = shipSpecialist(from: lower) {
+            return ship
+        }
+        if let fish = fishSpecialist(from: lower) {
+            return fish
+        }
+        return nil
+    }
+
+    private static func buildingSpecialist(from prompt: String, lower: String) -> SpecialistRoute? {
+        let markers = ["build with", "build using", "craft with", "make with"]
+        guard let marker = markers.first(where: { lower.contains($0) }) else { return nil }
+        guard let range = lower.range(of: marker) else { return nil }
+        let remainder = collapsedWhitespace(String(prompt[range.upperBound...]))
+        guard !remainder.isEmpty else { return nil }
+        return SpecialistRoute(
+            feature: .buildingParts,
+            search: "",
+            includeNotEnabled: false
+        )
+    }
+
+    private static func shipSpecialist(from lower: String) -> SpecialistRoute? {
+        let shipType = packedShipTypes.first { lower.contains($0.lowercased()) }
+        let role = packedShipRoles.first { role in
+            lower.contains(role.lowercased().trimmingCharacters(in: .init(charactersIn: "s")))
+                || lower.contains(role.lowercased())
+        }
+        let mentionsParts = lower.contains("part") || lower.contains("catalog") || role != nil
+        guard shipType != nil || (mentionsParts && lower.contains("ship")) else { return nil }
+        guard shipType != nil || role != nil else { return nil }
+        return SpecialistRoute(
+            feature: .shipParts,
+            search: role ?? "",
+            shipType: shipType
+        )
+    }
+
+    private static func fishSpecialist(from lower: String) -> SpecialistRoute? {
+        let fishingLanguage = lower.contains("catch")
+            || lower.contains("fish")
+            || lower.contains("fishing")
+        guard fishingLanguage else { return nil }
+        var timeOfDay: String?
+        if lower.contains("night") {
+            timeOfDay = "Night"
+        } else if lower.contains("day") && !lower.contains("today") {
+            timeOfDay = "Day"
+        }
+        let biome = packedBiomes.first { lower.contains($0.phrase) }?.value
+        let needsStorm = lower.contains("storm") ? true : nil
+        var size: String?
+        if lower.contains("extra large") || lower.contains("extralarge") {
+            size = "ExtraLarge"
+        } else if lower.contains("large") {
+            size = "Large"
+        } else if lower.contains("medium") {
+            size = "Medium"
+        } else if lower.contains("small") {
+            size = "Small"
+        }
+        var quality: String?
+        for packed in ["Legendary", "Epic", "Rare", "Common", "Junk"] where lower.contains(packed.lowercased()) {
+            quality = packed
+            break
+        }
+        guard timeOfDay != nil || biome != nil || needsStorm != nil || size != nil || quality != nil
+            || lower.contains("fish guide") || lower.contains("show fish") else {
+            return nil
+        }
+        return SpecialistRoute(
+            feature: .fish,
+            timeOfDay: timeOfDay,
+            biome: biome,
+            size: size,
+            quality: quality,
+            needsStorm: needsStorm
+        )
+    }
 
     private static func source(for lowerPrompt: String, tokens: [String]) -> Source {
         let tokenSet = Set(tokens)

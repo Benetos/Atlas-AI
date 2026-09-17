@@ -12,6 +12,7 @@ struct ValidatedAssistantTurn: Equatable, Sendable {
     var packReleaseID: String
     var evidenceDigest: String
     var refreshRequired: Bool
+    var navigationDestination: AppDestination? = nil
 
     var atlasReply: AtlasReply {
         AtlasReply(
@@ -109,6 +110,14 @@ struct GroundedRenderer: Sendable {
         if claims.contains(where: { $0.kind == .packFailure }) {
             return "I could not read the installed Atlas pack."
         }
+        if queryPlan.shouldBrowseSpecialist,
+           let route = queryPlan.resolvedSpecialistRoute(matching: entities) {
+            let summary = route.filterSummary
+            if summary.isEmpty {
+                return "I opened the packed \(route.feature.title.lowercased()) guide."
+            }
+            return "I opened the packed \(route.feature.title.lowercased()) guide for \(summary)."
+        }
         if let planEvidence {
             return recipePlanText(for: planEvidence, target: entities.first)
         }
@@ -147,7 +156,7 @@ struct GroundedRenderer: Sendable {
                     return "I found \(recipes.count) \(operation.rawValue) recipes related to \(entity.title)."
                 }
                 return "I found \(produced) packed recipes that make \(entity.title)."
-            case .lookup, .browseEntities, .browseRecipes:
+            case .lookup, .browseEntities, .browseRecipes, .browseSpecialist:
                 return Self.lookupSummary(for: entity)
             }
         }
@@ -271,6 +280,8 @@ struct GroundedRenderer: Sendable {
             return "recipes:\(type):\(id)"
         case .plan(let type, let id, let quantity):
             return "plan:\(type):\(id):\(quantity)"
+        case .openSpecialist(let route):
+            return "specialist:\(route.feature.rawValue):\(route.filterSummary)"
         }
     }
 

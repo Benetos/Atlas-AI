@@ -25,6 +25,8 @@ struct DestinationView: View {
                 quantity: quantity,
                 artifactID: artifactID
             )
+        case .specialist(let route):
+            SpecialistCollectionView(feature: route.feature, route: route)
         case .unavailable(let unavailable):
             UnavailableDestinationView(destination: unavailable)
         }

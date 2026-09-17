@@ -289,6 +289,15 @@ actor PackActivationStore {
         let stagedSidecar = stagingRelease.appendingPathComponent(PackLocator.sidecarName)
         try fileManager.copyItem(at: candidate.sqliteURL, to: stagedSQLite)
         try fileManager.copyItem(at: candidate.sidecarURL, to: stagedSidecar)
+        let sourceIcons = candidate.sqliteURL
+            .deletingLastPathComponent()
+            .appendingPathComponent(PackLocator.iconsDirectoryName, isDirectory: true)
+        if fileManager.fileExists(atPath: sourceIcons.path) {
+            try fileManager.copyItem(
+                at: sourceIcons,
+                to: stagingRelease.appendingPathComponent(PackLocator.iconsDirectoryName, isDirectory: true)
+            )
+        }
         await progress?(.verifying)
         let staged = try validator.validate(
             PackCandidate(sqliteURL: stagedSQLite, sidecarURL: stagedSidecar)

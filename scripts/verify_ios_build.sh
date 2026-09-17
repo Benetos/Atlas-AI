@@ -91,6 +91,11 @@ if [[ -z "${app_bundle}" ]]; then
       || fail "full Debug database is missing; run ./scripts/prepare_ios_debug_pack.sh"
     [[ -f "${generated_pack_dir}/pack-manifest.json" ]] \
       || fail "full Debug database sidecar is missing; run ./scripts/prepare_ios_debug_pack.sh"
+    [[ -d "${generated_pack_dir}/icons" ]] \
+      || fail "full Debug packed icons are missing; run ./scripts/prepare_ios_debug_pack.sh"
+    packed_icon_count="$(find "${generated_pack_dir}/icons" -name '*.png' -type f | wc -l | tr -d ' ')"
+    [[ "${packed_icon_count}" -gt 0 ]] \
+      || fail "full Debug packed icons directory does not contain any PNG files"
   fi
   xcodebuild \
     -project "${project_path}" \
@@ -175,6 +180,12 @@ if [[ "${configuration}" == "Debug" ]]; then
     || fail "full Debug SQLite pack is missing: ${bundled_sqlite}"
   [[ -f "${bundled_sidecar}" ]] \
     || fail "full Debug pack sidecar is missing: ${bundled_sidecar}"
+  bundled_icons="${app_bundle}/icons"
+  [[ -d "${bundled_icons}" ]] \
+    || fail "full Debug packed icons are missing: ${bundled_icons}"
+  bundled_icon_count="$(find "${bundled_icons}" -name '*.png' -type f | wc -l | tr -d ' ')"
+  [[ "${bundled_icon_count}" -gt 0 ]] \
+    || fail "full Debug app bundle does not contain packed PNG icons"
 
   command -v sqlite3 >/dev/null 2>&1 || fail "sqlite3 is not available"
   quick_check="$(sqlite3 "${bundled_sqlite}" "pragma quick_check;")" \
@@ -231,6 +242,8 @@ else
     || fail "Release bundle must not contain a bundled SQLite pack: ${bundled_sqlite}"
   [[ ! -e "${bundled_sidecar}" ]] \
     || fail "Release bundle must not contain a bundled pack sidecar: ${bundled_sidecar}"
+  [[ ! -e "${app_bundle}/icons" ]] \
+    || fail "Release bundle must not contain bundled packed icons: ${app_bundle}/icons"
 fi
 
 echo "Atlas iOS ${configuration} bundle verified"

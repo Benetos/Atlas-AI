@@ -822,9 +822,11 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
             switch feature {
             case .fish:
                 options.times = try distinctUnlocked("nms_fish", column: "time_of_day")
+                    .filter { $0 != PackedFishMembership.anyTime }
                 options.sizes = try distinctUnlocked("nms_fish", column: "size")
                 options.qualities = try distinctUnlocked("nms_fish", column: "quality")
                 options.biomes = try distinctUnlocked("nms_fish_biomes", column: "biome")
+                    .filter { $0 != PackedFishMembership.anyBiome }
             case .bait:
                 options.usedFor = try distinctUnlocked("nms_bait", column: "used_for")
             case .shipParts:
@@ -832,6 +834,7 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
                 options.categories = try distinctUnlocked("nms_ship_parts", column: "category")
             case .buildingParts:
                 options.categories = try distinctUnlocked("nms_building_parts", column: "wiki_category")
+                    .filter { $0 != "NotEnabled" }
             case .corvetteParts:
                 options.categories = try distinctUnlocked(
                     "nms_corvette_part_categories",
@@ -864,7 +867,11 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
         sql += " where 1 = 1"
         appendSearch(query.search, columns: ["f.title", "f.external_id", "f.subtitle"], sql: &sql, parameters: &parameters)
         if let timeOfDay = query.timeOfDay {
-            sql += " and f.time_of_day = ?"
+            if timeOfDay == PackedFishMembership.night || timeOfDay == PackedFishMembership.day {
+                sql += " and f.time_of_day in (?, '\(PackedFishMembership.anyTime)')"
+            } else {
+                sql += " and f.time_of_day = ?"
+            }
             parameters.append(.text(timeOfDay))
         }
         if let size = query.size {
@@ -876,12 +883,20 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
             parameters.append(.text(quality))
         }
         if let needsStorm = query.needsStorm {
-            sql += " and f.needs_storm = ?"
-            parameters.append(.int(needsStorm ? 1 : 0))
+            if needsStorm {
+                sql += " and f.needs_storm = 1"
+            } else {
+                sql += " and (f.needs_storm is null or f.needs_storm = 0)"
+            }
         }
         if let biome = query.biome {
-            sql += " and b.biome = ?"
-            parameters.append(.text(biome))
+            if biome == PackedFishMembership.anyBiome {
+                sql += " and b.biome = ?"
+                parameters.append(.text(biome))
+            } else {
+                sql += " and b.biome in (?, '\(PackedFishMembership.anyBiome)')"
+                parameters.append(.text(biome))
+            }
         }
         sql += " order by lower(coalesce(f.title, f.external_id)) limit ? offset ?"
         parameters.append(.int(query.limit))
@@ -999,21 +1014,51 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
         table: String,
         categoryColumn: String
     ) throws -> [SpecialistSummary] {
-        var sql = """
-        select external_id, source_ordinal, title, \(categoryColumn), not_enabled, icon_source_path
-          from \(table)
-         where 1 = 1
-        """
+        var sql: String
         var parameters: [SQLValue] = []
-        appendSearch(query.search, columns: ["title", "external_id"], sql: &sql, parameters: &parameters)
+        if let requiredGameID = query.requiredGameID {
+            let requirementsTable = feature == .corvetteParts
+                ? "nms_corvette_part_requirements"
+                : "nms_building_part_requirements"
+            sql = """
+            select distinct p.external_id, p.source_ordinal, p.title, p.\(categoryColumn),
+                   p.not_enabled, p.icon_source_path
+              from \(table) p
+              join \(requirementsTable) r
+                on r.external_id = p.external_id
+               and r.source_ordinal = p.source_ordinal
+             where r.game_id = ?
+            """
+            parameters.append(.text(requiredGameID))
+            if let requiredEntityType = query.requiredEntityType {
+                sql += " and r.entity_type = ?"
+                parameters.append(.text(requiredEntityType))
+            }
+        } else {
+            sql = """
+            select external_id, source_ordinal, title, \(categoryColumn), not_enabled, icon_source_path
+              from \(table)
+             where 1 = 1
+            """
+        }
+        let qualifiedTitle = query.requiredGameID == nil ? "title" : "p.title"
+        let qualifiedID = query.requiredGameID == nil ? "external_id" : "p.external_id"
+        let qualifiedEnabled = query.requiredGameID == nil ? "not_enabled" : "p.not_enabled"
+        appendSearch(
+            query.search,
+            columns: [qualifiedTitle, qualifiedID],
+            sql: &sql,
+            parameters: &parameters
+        )
         if !query.includeNotEnabled {
-            sql += " and not_enabled = 0"
+            sql += " and \(qualifiedEnabled) = 0"
         }
         if let category = query.category {
-            sql += " and \(categoryColumn) = ?"
+            let column = query.requiredGameID == nil ? categoryColumn : "p.\(categoryColumn)"
+            sql += " and \(column) = ?"
             parameters.append(.text(category))
         }
-        sql += " order by lower(coalesce(title, external_id)) limit ? offset ?"
+        sql += " order by lower(coalesce(\(qualifiedTitle), \(qualifiedID))) limit ? offset ?"
         parameters.append(.int(query.limit))
         parameters.append(.int(query.offset))
         return try self.query(sql, parameters: parameters) { stmt in
@@ -1484,7 +1529,7 @@ final class SQLiteNMSStore: NMSStore, @unchecked Sendable {
         try query(
             """
             select r.position, r.entity_type, r.game_id, r.amount,
-                   coalesce(e.display_name, e.name, r.game_id)
+                   coalesce(e.display_name, e.name, r.title, r.game_id)
               from \(table) r
               left join nms_entities e
                 on e.entity_type = r.entity_type

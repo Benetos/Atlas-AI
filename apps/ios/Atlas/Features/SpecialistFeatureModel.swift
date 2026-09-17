@@ -14,6 +14,8 @@ final class SpecialistCollectionModel {
     var shipType: String?
     var category: String?
     var includeNotEnabled = false
+    var requiredEntityType: String?
+    var requiredGameID: String?
     var options = SpecialistFilterOptions.empty
     var items: [SpecialistSummary] = []
     var offset = 0
@@ -27,9 +29,22 @@ final class SpecialistCollectionModel {
     private var loadGeneration: UInt64 = 0
     private let pageSize = 60
 
-    init(feature: SpecialistFeature) {
+    init(feature: SpecialistFeature, route: SpecialistRoute? = nil) {
         self.feature = feature
-        includeNotEnabled = !feature.hidesDisabledByDefault
+        includeNotEnabled = route?.includeNotEnabled ?? !feature.hidesDisabledByDefault
+        if let route {
+            search = route.search
+            timeOfDay = route.timeOfDay
+            biome = route.biome
+            size = route.size
+            quality = route.quality
+            needsStorm = route.needsStorm
+            usedFor = route.usedFor
+            shipType = route.shipType
+            category = route.category
+            requiredEntityType = route.requiredEntityType
+            requiredGameID = route.requiredGameID
+        }
     }
 
     var query: SpecialistQuery {
@@ -45,6 +60,8 @@ final class SpecialistCollectionModel {
             shipType: shipType,
             category: category,
             includeNotEnabled: includeNotEnabled,
+            requiredEntityType: requiredEntityType,
+            requiredGameID: requiredGameID,
             limit: pageSize,
             offset: offset
         )
@@ -63,6 +80,8 @@ final class SpecialistCollectionModel {
             shipType ?? "",
             category ?? "",
             includeNotEnabled ? "1" : "0",
+            requiredEntityType ?? "",
+            requiredGameID ?? "",
         ].joined(separator: ":")
     }
 

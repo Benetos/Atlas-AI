@@ -154,6 +154,23 @@ final class OfflineAtlasTests: XCTestCase {
         XCTAssertNoThrow(try store.validateReadOnlyBoundary())
         XCTAssertEqual(try store.specialistSummaries(SpecialistQuery(feature: .fish, limit: 1_000)).count, 226)
         XCTAssertEqual(try store.specialistSummaries(SpecialistQuery(feature: .bait, limit: 1_000)).count, 621)
+        XCTAssertEqual(
+            try store.specialistSummaries(
+                SpecialistQuery(feature: .fish, timeOfDay: "Night", limit: 1_000)
+            ).count,
+            208
+        )
+        XCTAssertEqual(
+            try store.specialistSummaries(
+                SpecialistQuery(feature: .fish, timeOfDay: "Day", limit: 1_000)
+            ).count,
+            200
+        )
+        let fishOptions = try store.specialistFilterOptions(feature: .fish)
+        XCTAssertFalse(fishOptions.times.contains("Both"))
+        XCTAssertFalse(fishOptions.biomes.contains("All"))
+        XCTAssertTrue(fishOptions.times.contains("Night"))
+        XCTAssertTrue(fishOptions.biomes.contains("Frozen"))
     }
 
     func testSearchIncludesMetadataAndFeatureCategoriesCanBeBrowsed() throws {

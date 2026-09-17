@@ -162,6 +162,21 @@ install -m 0644 "${sqlite_path}" "${stage_dir}/nms-reference.sqlite"
 install -m 0644 "${sidecar_path}" "${stage_dir}/pack-manifest.json"
 install -m 0644 "${packaging_manifest}" "${stage_dir}/Manifest.json"
 
+"${python_bin}" "${repo_root}/scripts/fetch_nms_assets.py" --approved \
+    --asset-manifest "${import_dir}/assets.csv" \
+    --source-repo "${repo_root}/.cache/nms-handbook" \
+    --output-dir "${repo_root}/build/nms-assets"
+"${python_bin}" "${repo_root}/scripts/pack_nms_icons.py" \
+    --asset-manifest "${import_dir}/assets.csv" \
+    --fetch-dir "${repo_root}/build/nms-assets" \
+    --pack-dir "${sqlite_output_dir}"
+if [[ ! -d "${sqlite_output_dir}/icons" ]]; then
+    printf 'Packed icons directory is missing: %s/icons\n' "${sqlite_output_dir}" >&2
+    exit 1
+fi
+mkdir -p "${stage_dir}/icons"
+cp -R "${sqlite_output_dir}/icons/." "${stage_dir}/icons/"
+
 "${python_bin}" - \
     "${import_dir}/manifest.json" \
     "${stage_dir}/nms-reference.sqlite" \
@@ -305,14 +320,29 @@ require_equal(packaging_manifest.get("assetPackID"), "nms-reference", "manifest 
 selectors = packaging_manifest.get("fileSelectors")
 if not isinstance(selectors, list) or not all(isinstance(item, dict) for item in selectors):
     fail("asset-pack fileSelectors must be an array of objects")
-selector_files = [item.get("file") for item in selectors]
+selector_files = []
+selector_directories = []
+for item in selectors:
+    if "file" in item:
+        selector_files.append(item.get("file"))
+    if "directory" in item:
+        selector_directories.append(item.get("directory"))
 if not all(isinstance(item, str) for item in selector_files):
     fail("every asset-pack file selector must name a file")
+if not all(isinstance(item, str) for item in selector_directories):
+    fail("every asset-pack directory selector must name a directory")
 require_equal(
     sorted(selector_files),
     ["nms-reference.sqlite", "pack-manifest.json"],
     "asset-pack file selectors",
 )
+require_equal(selector_directories, ["icons"], "asset-pack directory selectors")
+icons_dir = sqlite_path.parent / "icons"
+if not icons_dir.is_dir():
+    fail(f"packed icons directory is missing: {icons_dir}")
+packed_icons = sum(1 for path in icons_dir.rglob("*.png") if path.is_file())
+if packed_icons <= 0:
+    fail("packed icons directory does not contain any PNG files")
 platforms = packaging_manifest.get("platforms")
 if not isinstance(platforms, list) or "iOS" not in platforms:
     fail("asset-pack platforms must include iOS")
@@ -380,6 +410,13 @@ try:
         "nms_special_purchases": 332,
         "nms_special_rewards": 594,
         "nms_stories": 7,
+        "nms_fish_biomes": 331,
+        "nms_building_part_requirements": 1_571,
+        "nms_corvette_part_categories": 636,
+        "nms_corvette_part_requirements": 110,
+        "nms_story_pages": 40,
+        "nms_story_entries": 592,
+        "nms_special_reward_sources": 657,
     }
     for table, expected in FEATURE_TABLE_COUNTS.items():
         present = connection.execute(

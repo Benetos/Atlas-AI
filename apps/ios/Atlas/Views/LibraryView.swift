@@ -259,11 +259,7 @@ struct LibraryView: View {
                 }
                 if recipe.recipeKind == "cooking" {
                     AtlasOpenLink(
-                        destination: .recipePlan(
-                            type: recipe.outputEntityType,
-                            id: recipe.outputGameID,
-                            quantity: 1
-                        ),
+                        destination: recipe.planDestination(),
                         section: .library
                     ) {
                         Text("Open plan")

@@ -2,22 +2,22 @@
   "asset_pack_id": "nms-reference",
   "contract_version": 1,
   "counts": {
-    "content_records": 3,
+    "content_records": 11,
     "entities": 3,
     "localizations_preferred": 1,
     "recipe_ingredients": 3,
     "recipes": 3
   },
-  "generated_at": "2026-09-11T21:19:28.016170+00:00",
+  "generated_at": "2026-09-17T04:24:29.162519+00:00",
   "pack_role": "preview",
   "pack_schema_version": 2,
   "source_commit_sha": "142d9ffd8078944722243398202f22cbef47cd02",
   "source_committed_at": "2026-02-20T00:00:00+00:00",
   "source_repository": "https://github.com/ApexFatality93/NMS-Handbook",
   "sqlite": {
-    "bytes": 315392,
+    "bytes": 356352,
     "file": "nms-reference.sqlite",
-    "sha256": "e834f5ff0a2e1fc35440f3f5dc803b6beef0c69364d160416d72ff3915782520"
+    "sha256": "453acbab2fc6c78c396bdca2af20bcb765d5990d9d5fa5b89ecfa4780a233463"
   },
   "validation": {
     "errors": [],
