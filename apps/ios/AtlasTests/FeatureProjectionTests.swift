@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import Atlas
 
 final class FeatureProjectionTests: XCTestCase {
@@ -152,7 +153,7 @@ final class FeatureProjectionTests: XCTestCase {
                 fromSourcePath: "TEXTURES/UI/FRONTEND/ICONS/FISH/PRODUCT2.FISH.JELLY.DDS"
             )
         )
-        let present = directory.appendingPathComponent(relative)
+        let present = directory.appending(path: relative)
         try FileManager.default.createDirectory(
             at: present.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -172,6 +173,30 @@ final class FeatureProjectionTests: XCTestCase {
                 packDirectory: directory
             )
         )
+    }
+
+    func testPackedIconResolvesAgainstDebugPackIconsTree() throws {
+        let packDir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent() // AtlasTests
+            .deletingLastPathComponent() // ios
+            .deletingLastPathComponent() // apps
+            .deletingLastPathComponent() // repo root
+            .appending(path: "build/nms-sqlite")
+        let icons = packDir.appending(path: "icons")
+        try XCTSkipIf(
+            !FileManager.default.fileExists(atPath: icons.path),
+            "Full Debug pack icons are not present on this machine"
+        )
+        let url = try XCTUnwrap(
+            PackedIconLocator.fileURL(
+                sourcePath: "TEXTURES/UI/FRONTEND/ICONS/FISH/PRODUCT2.FISH.JELLY.DDS",
+                packDirectory: packDir
+            )
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        let data = try Data(contentsOf: url)
+        XCTAssertFalse(data.isEmpty)
+        XCTAssertNotNil(UIImage(data: data))
     }
 
     func testContentDetailRoutesKnownDatasetsToSpecialistFeatures() {

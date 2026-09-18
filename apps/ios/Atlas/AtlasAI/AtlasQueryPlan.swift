@@ -177,13 +177,13 @@ struct AtlasQueryPlan: Equatable, Sendable {
     /// Words that express the question rather than identify NMS data. Operation
     /// words are removed because their typed meaning is retained separately.
     private static let localGlue: Set<String> = [
-        "a", "about", "all", "an", "and", "any", "are", "atlas", "can", "could",
+        "a", "about", "all", "an", "and", "any", "are", "at", "atlas", "can", "could",
         "build", "built", "create", "created", "craft", "crafted", "crafting",
         "do", "does", "everything", "find", "for", "from", "get", "give", "how",
         "i", "in", "ingredient", "ingredients", "internet", "into", "is", "locate",
         "latest", "live", "look", "lookup", "made", "make", "making", "me",
         "my", "need", "newest", "now", "obtain", "of", "on", "online", "please",
-        "produce", "produced", "recent", "plan", "want",
+        "planet", "produce", "produced", "recent", "plan", "want",
         "recipe", "recipes", "refine", "refined", "refiner", "refining", "search",
         "show", "tell", "the", "this", "to", "today", "up", "use", "used",
         "uses", "using", "web", "what", "where", "which", "wiki", "with", "would", "you",
@@ -269,7 +269,8 @@ struct AtlasQueryPlan: Equatable, Sendable {
         let fishingLanguage = lower.contains("catch")
             || lower.contains("fish")
             || lower.contains("fishing")
-        guard fishingLanguage else { return nil }
+            || lower.contains("bait")
+            || lower.contains("angler")
         var timeOfDay: String?
         if lower.contains("night") {
             timeOfDay = "Night"
@@ -293,10 +294,14 @@ struct AtlasQueryPlan: Equatable, Sendable {
             quality = packed
             break
         }
-        guard timeOfDay != nil || biome != nil || needsStorm != nil || size != nil || quality != nil
-            || lower.contains("fish guide") || lower.contains("show fish") else {
-            return nil
-        }
+        let hasFishFacet = timeOfDay != nil || biome != nil || needsStorm != nil
+            || size != nil || quality != nil
+            || lower.contains("fish guide") || lower.contains("show fish")
+        // Night/biome alone is enough for the fishing guide — otherwise content FTS
+        // uniquely hits Stories "Other History" for the canonical night+frozen prompt.
+        let conditionFishing = (timeOfDay != nil || needsStorm != nil) && biome != nil
+        guard fishingLanguage || conditionFishing else { return nil }
+        guard hasFishFacet else { return nil }
         return SpecialistRoute(
             feature: .fish,
             timeOfDay: timeOfDay,

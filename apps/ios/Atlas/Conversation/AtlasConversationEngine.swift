@@ -410,19 +410,28 @@ actor AtlasConversationEngine {
 
         var content: [ContentRecord] = []
         if !plan.shouldBrowseSpecialist, !plan.shouldBrowseRecipes, entities.isEmpty, recipes.isEmpty {
-            for query in plan.localSearchQueries {
-                let output = try await tools.invoke(
-                    LocalToolCall(
-                        name: LocalToolName.searchContent.rawValue,
-                        query: query,
-                        limit: ConversationBounds.answerContentLimit
+            // Fishing condition prompts must not fall through to Stories FTS
+            // ("Other History" uniquely matches catch+night+frozen+planet).
+            let lower = plan.originalPrompt.lowercased()
+            let looksLikeFishing = lower.contains("catch") || lower.contains("fish")
+                || lower.contains("fishing") || lower.contains("bait")
+                || ((lower.contains("night") || lower.contains("storm"))
+                    && (lower.contains("frozen") || lower.contains("planet")))
+            if !looksLikeFishing {
+                for query in plan.localSearchQueries {
+                    let output = try await tools.invoke(
+                        LocalToolCall(
+                            name: LocalToolName.searchContent.rawValue,
+                            query: query,
+                            limit: ConversationBounds.answerContentLimit
+                        )
                     )
-                )
-                if case .content(let rows) = output.payload {
-                    content.append(contentsOf: rows)
+                    if case .content(let rows) = output.payload {
+                        content.append(contentsOf: rows)
+                    }
+                    content = uniqueContent(content)
+                    if content.count >= ConversationBounds.answerContentLimit { break }
                 }
-                content = uniqueContent(content)
-                if content.count >= ConversationBounds.answerContentLimit { break }
             }
         }
 

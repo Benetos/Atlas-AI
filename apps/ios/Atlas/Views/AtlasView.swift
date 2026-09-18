@@ -348,7 +348,18 @@ struct AtlasView: View {
         )
         conversation.messages.append(assistant)
         if let destination = turn.navigationDestination {
-            router.select(destination, in: .atlas)
+            // Defer so TabView/NavigationStack finishes committing the new message
+            // before the specialist push — otherwise iPhone can drop the route.
+            Task { @MainActor in
+                router.select(destination, in: .atlas)
+            }
+        } else if let openSpecialist = turn.followUps.first(where: {
+            if case .openSpecialist = $0.intent { return true }
+            return false
+        }), case .openSpecialist(let route) = openSpecialist.intent {
+            Task { @MainActor in
+                router.select(route.destination, in: .atlas)
+            }
         }
     }
 

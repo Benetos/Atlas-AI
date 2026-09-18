@@ -106,7 +106,9 @@ struct LibraryView: View {
     var body: some View {
         @Bindable var session = session
         Group {
-            if trimmedQuery.isEmpty, let feature = session.browsing.specialistFeature {
+            if let feature = session.browsing.specialistFeature {
+                // Keep specialist filters visible. Library search must not eject Fish
+                // into global FTS when the user types "night" / "frozen".
                 specialistBrowse(feature)
             } else {
                 List {
@@ -119,7 +121,12 @@ struct LibraryView: View {
             }
         }
         .navigationTitle("Library")
-        .searchable(text: $session.query, prompt: "Items, recipes, expeditions, and more")
+        .searchable(
+            text: $session.query,
+            prompt: session.browsing.specialistFeature == nil
+                ? "Items, recipes, expeditions, and more"
+                : "Search \(session.browsing.title.lowercased()) or leave blank for filters"
+        )
         .task(id: browseTaskID) {
             await loadBrowse(reset: true)
         }
@@ -139,8 +146,12 @@ struct LibraryView: View {
             .pickerStyle(.menu)
             .padding(.horizontal)
             .padding(.vertical, 8)
-            SpecialistCollectionView(feature: feature, usesLibraryTitle: true)
-                .id(feature)
+            SpecialistCollectionView(
+                feature: feature,
+                usesLibraryTitle: true,
+                librarySearch: session.query
+            )
+            .id(feature)
         }
     }
 

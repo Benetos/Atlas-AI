@@ -19,7 +19,8 @@ struct PackedIcon: View {
     var colorG: String? = nil
     var colorB: String? = nil
 
-    @Environment(\.packDirectory) private var packDirectory
+    @Environment(\.packDirectory) private var environmentPackDirectory
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         if let image = loadedImage {
@@ -39,11 +40,19 @@ struct PackedIcon: View {
         }
     }
 
+    private var packDirectory: URL? {
+        model.packDirectory ?? environmentPackDirectory
+    }
+
     private var loadedImage: UIImage? {
         guard let url = PackedIconLocator.fileURL(
             sourcePath: sourcePath,
             packDirectory: packDirectory
         ) else { return nil }
+        // Prefer Data→UIImage so sealed bundle paths still decode on device.
+        if let data = try? Data(contentsOf: url), let image = UIImage(data: data) {
+            return image
+        }
         return UIImage(contentsOfFile: url.path)
     }
 }

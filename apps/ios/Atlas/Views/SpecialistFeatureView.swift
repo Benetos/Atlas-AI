@@ -6,13 +6,20 @@ struct SpecialistCollectionView: View {
     var feature: SpecialistFeature
     var usesLibraryTitle: Bool = false
     var route: SpecialistRoute? = nil
+    var librarySearch: String = ""
 
     @State private var session: SpecialistCollectionModel
 
-    init(feature: SpecialistFeature, usesLibraryTitle: Bool = false, route: SpecialistRoute? = nil) {
+    init(
+        feature: SpecialistFeature,
+        usesLibraryTitle: Bool = false,
+        route: SpecialistRoute? = nil,
+        librarySearch: String = ""
+    ) {
         self.feature = feature
         self.usesLibraryTitle = usesLibraryTitle
         self.route = route
+        self.librarySearch = librarySearch
         _session = State(initialValue: SpecialistCollectionModel(feature: feature, route: route))
     }
 
@@ -68,6 +75,12 @@ struct SpecialistCollectionView: View {
                     }
             }
         }
+        .onAppear {
+            session.applyLibrarySearch(librarySearch)
+        }
+        .onChange(of: librarySearch) { _, newValue in
+            session.applyLibrarySearch(newValue)
+        }
         .task(id: "\(session.filterTaskID):\(model.generationID)") {
             await load(reset: true)
         }
@@ -76,8 +89,17 @@ struct SpecialistCollectionView: View {
     @ViewBuilder
     private var filterSection: some View {
         @Bindable var session = session
-        Section("Filters") {
+        Section {
+            if !session.activeFilterSummary.isEmpty {
+                Text(session.activeFilterSummary)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Active filters \(session.activeFilterSummary)")
+            }
             TextField("Search \(feature.title.lowercased())", text: $session.search)
+                .onSubmit {
+                    session.interpretSearchInput(session.search)
+                }
             if !session.options.times.isEmpty {
                 optionalPicker("Time", selection: $session.timeOfDay, values: session.options.times)
             }
@@ -96,6 +118,7 @@ struct SpecialistCollectionView: View {
                     Text("Needs storm").tag(Optional.some(true))
                     Text("No storm required").tag(Optional.some(false))
                 }
+                .pickerStyle(.menu)
             }
             if !session.options.usedFor.isEmpty {
                 optionalPicker("Used for", selection: $session.usedFor, values: session.options.usedFor)
@@ -108,6 +131,12 @@ struct SpecialistCollectionView: View {
             }
             if feature.hidesDisabledByDefault {
                 Toggle("Show not enabled", isOn: $session.includeNotEnabled)
+            }
+        } header: {
+            Text("Filters")
+        } footer: {
+            if feature == .fish {
+                Text("Use Time and Biome menus for Night / Frozen. Typing those words in Search also sets the matching filters.")
             }
         }
     }
@@ -130,6 +159,7 @@ struct SpecialistCollectionView: View {
                 Text(value).tag(Optional(value))
             }
         }
+        .pickerStyle(.menu)
     }
 
     @ViewBuilder

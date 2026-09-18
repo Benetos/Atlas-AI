@@ -158,6 +158,38 @@ final class FeatureHandoffTests: XCTestCase {
         )
     }
 
+    func testNightFrozenPromptDoesNotOpenOtherHistoryStory() async throws {
+        let turn = await reply(
+            prompt: "What can I catch at night on a frozen planet?",
+            catalog: try previewCatalog()
+        )
+        XCTAssertEqual(turn.cards, [])
+        guard case .specialist(let route) = turn.navigationDestination else {
+            return XCTFail("Expected specialist fish destination")
+        }
+        XCTAssertEqual(route.feature, .fish)
+        XCTAssertEqual(route.timeOfDay, "Night")
+        XCTAssertEqual(route.biome, "Frozen")
+        XCTAssertFalse(turn.text.localizedCaseInsensitiveContains("Other History"))
+    }
+
+    func testConditionOnlyNightFrozenStillOpensFish() throws {
+        let plan = AtlasQueryPlan(prompt: "night on a frozen planet")
+        let route = try XCTUnwrap(plan.specialistRoute)
+        XCTAssertEqual(route.feature, .fish)
+        XCTAssertEqual(route.timeOfDay, "Night")
+        XCTAssertEqual(route.biome, "Frozen")
+    }
+
+    @MainActor
+    func testFishSearchTokensMapOntoTimeAndBiomePickers() {
+        let session = SpecialistCollectionModel(feature: .fish)
+        session.interpretSearchInput("night frozen")
+        XCTAssertEqual(session.timeOfDay, "Night")
+        XCTAssertEqual(session.biome, "Frozen")
+        XCTAssertEqual(session.search, "")
+    }
+
     private func reply(
         prompt: String,
         catalog: SQLiteNMSCatalog,

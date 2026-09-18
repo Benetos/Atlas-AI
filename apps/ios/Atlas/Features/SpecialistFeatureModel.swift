@@ -85,6 +85,84 @@ final class SpecialistCollectionModel {
         ].joined(separator: ":")
     }
 
+    var activeFilterSummary: String {
+        var parts: [String] = []
+        if let timeOfDay, !timeOfDay.isEmpty { parts.append("Time \(timeOfDay)") }
+        if let biome, !biome.isEmpty { parts.append("Biome \(biome)") }
+        if let size, !size.isEmpty { parts.append("Size \(size)") }
+        if let quality, !quality.isEmpty { parts.append(quality) }
+        if needsStorm == true { parts.append("Storm") }
+        if needsStorm == false { parts.append("No storm") }
+        if let usedFor, !usedFor.isEmpty { parts.append(usedFor) }
+        if let shipType, !shipType.isEmpty { parts.append(shipType) }
+        if let category, !category.isEmpty { parts.append(category) }
+        return parts.joined(separator: " · ")
+    }
+
+    func applyLibrarySearch(_ raw: String) {
+        interpretSearchInput(raw)
+    }
+
+    func applyFacetTokens(from raw: String) {
+        interpretSearchInput(raw, replaceSearch: false)
+    }
+
+    /// Maps Night / Frozen style tokens onto packed filter pickers.
+    /// When `replaceSearch` is true (Library searchable / bulk apply), leftover
+    /// title tokens remain in `search`. When false (typing in the Filters field),
+    /// facet words are stripped so LIKE search does not fight the pickers.
+    func interpretSearchInput(_ raw: String, replaceSearch: Bool = true) {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard feature == .fish else {
+            if replaceSearch { search = trimmed }
+            return
+        }
+        let lower = trimmed.lowercased()
+        let tokens = Set(
+            lower.split { !$0.isLetter && !$0.isNumber }.map(String.init).filter { !$0.isEmpty }
+        )
+        if tokens.contains("night") {
+            timeOfDay = PackedFishMembership.night
+        } else if tokens.contains("day") && !tokens.contains("today") {
+            timeOfDay = PackedFishMembership.day
+        }
+        let biomePhrases: [(String, String)] = [
+            ("gas giant", "GasGiant"),
+            ("waterworld", "Waterworld"),
+            ("radioactive", "Radioactive"),
+            ("scorched", "Scorched"),
+            ("frozen", "Frozen"),
+            ("barren", "Barren"),
+            ("swamp", "Swamp"),
+            ("toxic", "Toxic"),
+            ("lush", "Lush"),
+            ("lava", "Lava"),
+            ("weird", "Weird"),
+        ]
+        for (phrase, value) in biomePhrases where lower.contains(phrase) {
+            biome = value
+            break
+        }
+        if tokens.contains("storm") {
+            needsStorm = true
+        }
+        search = Self.strippedFishSearch(trimmed, feature: feature)
+    }
+
+    private static func strippedFishSearch(_ raw: String, feature: SpecialistFeature) -> String {
+        guard feature == .fish else { return raw }
+        let drop: Set<String> = [
+            "night", "day", "today", "storm", "frozen", "barren", "swamp", "toxic",
+            "lush", "lava", "weird", "scorched", "radioactive", "waterworld", "gas", "giant",
+            "at", "on", "a", "the", "planet",
+        ]
+        return raw
+            .split { !$0.isLetter && !$0.isNumber }
+            .map(String.init)
+            .filter { !drop.contains($0.lowercased()) }
+            .joined(separator: " ")
+    }
+
     func load(catalog: any NMSCatalog, reset: Bool) async {
         if isLoading && !reset { return }
         loadGeneration += 1

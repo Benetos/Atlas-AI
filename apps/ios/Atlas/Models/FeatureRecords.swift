@@ -293,12 +293,22 @@ enum PackedIconLocator {
         guard let relative = relativePath(fromSourcePath: sourcePath) else { return nil }
         var candidates: [URL] = []
         if let packDirectory {
-            candidates.append(packDirectory.appendingPathComponent(relative))
+            candidates.append(packDirectory.appending(path: relative))
         }
         if let resource = Bundle.main.resourceURL {
-            candidates.append(resource.appendingPathComponent(relative))
+            candidates.append(resource.appending(path: relative))
         }
-        candidates.append(Bundle.main.bundleURL.appendingPathComponent(relative))
+        candidates.append(Bundle.main.bundleURL.appending(path: relative))
+        let fileName = URL(fileURLWithPath: relative).deletingPathExtension().lastPathComponent
+        let ext = URL(fileURLWithPath: relative).pathExtension
+        let subdirectory = URL(fileURLWithPath: relative).deletingLastPathComponent().path
+        if let bundled = Bundle.main.url(
+            forResource: fileName,
+            withExtension: ext.isEmpty ? nil : ext,
+            subdirectory: subdirectory.isEmpty ? nil : subdirectory
+        ) {
+            candidates.append(bundled)
+        }
         return candidates.first { FileManager.default.fileExists(atPath: $0.path) }
     }
 }
