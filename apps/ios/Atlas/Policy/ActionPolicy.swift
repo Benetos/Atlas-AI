@@ -4,6 +4,14 @@ struct GeneratedActionProposal: Equatable, Sendable, Hashable {
     var kind: String
     var payload: [String: String]
 
+    static func filter(_ route: SpecialistRoute) -> GeneratedActionProposal {
+        let encoded = (try? JSONEncoder().encode(route)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        return GeneratedActionProposal(
+            kind: "filter",
+            payload: ["record": "specialist", "route": encoded]
+        )
+    }
+
     static func open(_ key: RecordKey) -> GeneratedActionProposal {
         GeneratedActionProposal(kind: "open", payload: Self.payload(for: key))
     }
@@ -131,6 +139,19 @@ struct ActionResolver: Sendable {
     ) throws -> ResolvedAction {
         switch proposal.kind {
         case "open", "filter":
+            if proposal.payload["record"] == "specialist" {
+                guard let raw = proposal.payload["route"],
+                      let data = raw.data(using: .utf8),
+                      let route = try? JSONDecoder().decode(SpecialistRoute.self, from: data)
+                else {
+                    throw ActionResolutionError.missingIdentifier
+                }
+                let destination = route.destination
+                let action: AtlasAction = proposal.kind == "filter"
+                    ? .filter(destination)
+                    : .open(destination)
+                return make(action, keys: [], ledger: ledger, packReleaseID: packReleaseID)
+            }
             let key = try recordKey(from: proposal.payload)
             try ensureKnown(key, ledger: ledger)
             guard let destination = key.destination else {
@@ -358,6 +379,9 @@ struct PendingAction: Equatable, Sendable, Hashable, Identifiable {
             return id
         case .recipePlan(let type, let id, let quantity, _):
             return "\(quantity)× \(type) \(id)"
+        case .specialist(let route):
+            let filters = route.filterSummary
+            return filters.isEmpty ? route.feature.title : "\(route.feature.title) \(filters)"
         case .unavailable(let unavailable):
             return unavailable.title
         }

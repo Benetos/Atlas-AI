@@ -18,6 +18,7 @@ enum PackLocator {
     static let packID = "nms-reference"
     static let sqliteName = "nms-reference.sqlite"
     static let sidecarName = "pack-manifest.json"
+    static let iconsDirectoryName = "icons"
     static let appGroupID = "group.ai.atlas.nms"
 
     /// Atlas owns activated copies of Apple-managed files. Background Assets

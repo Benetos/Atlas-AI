@@ -20,6 +20,20 @@ struct RecipeDetailView: View {
         ) { content in
             List {
                 Section {
+                    Button {
+                        let quantity = (try? Quantity.parse(content.recipe.outputAmount ?? "1")) ?? 1
+                        router.open(
+                            .recipePlan(
+                                type: content.recipe.outputEntityType,
+                                id: content.recipe.outputGameID,
+                                quantity: quantity
+                            ),
+                            in: router.selectedSection
+                        )
+                    } label: {
+                        Label("Open plan", systemImage: "list.bullet.clipboard")
+                    }
+                    .accessibilityLabel("Open plan for \(content.recipe.title)")
                     LabeledContent("Kind", value: content.recipe.recipeKind.capitalized)
                     if let amount = content.recipe.outputAmount {
                         LabeledContent("Output amount", value: amount)

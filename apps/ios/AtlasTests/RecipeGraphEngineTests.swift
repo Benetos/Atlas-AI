@@ -988,14 +988,14 @@ final class RecipeGraphEngineTests: XCTestCase {
 
         let pack1 = PackIdentity(
             sourceCommitSHA: "pack-1",
-            packSchemaVersion: 1,
+            packSchemaVersion: 2,
             contractVersion: 1,
             generatedAt: "2026-09-04T00:00:00Z",
             packRole: "preview"
         )
         let pack2 = PackIdentity(
             sourceCommitSHA: "pack-2",
-            packSchemaVersion: 1,
+            packSchemaVersion: 2,
             contractVersion: 1,
             generatedAt: "2026-09-04T00:00:00Z",
             packRole: "preview"
@@ -1163,7 +1163,7 @@ final class RecipeGraphEngineTests: XCTestCase {
 
     private static let pack = PackIdentity(
         sourceCommitSHA: "pack-phase-2",
-        packSchemaVersion: 1,
+        packSchemaVersion: 2,
         contractVersion: 1,
         generatedAt: "2026-09-04T00:00:00Z",
         packRole: "preview"

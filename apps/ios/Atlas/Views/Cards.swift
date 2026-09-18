@@ -109,8 +109,9 @@ struct EntityCardView: View {
     var body: some View {
         AtlasCardShell {
             HStack(alignment: .top, spacing: 12) {
-                PlaceholderIcon(
-                    entityType: entity.entityType,
+                PackedIcon(
+                    sourcePath: entity.iconSourcePath,
+                    fallbackEntityType: entity.entityType,
                     colorR: entity.colorR,
                     colorG: entity.colorG,
                     colorB: entity.colorB
@@ -168,15 +169,22 @@ struct ContentCardView: View {
 
     var body: some View {
         AtlasCardShell {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(record.title)
-                    .font(.headline)
-                Text(record.dataset.replacingOccurrences(of: "_", with: " "))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if let provenance {
-                    SourceBadge(presentation: provenance)
+            HStack(alignment: .top, spacing: 12) {
+                PackedIcon(
+                    sourcePath: record.iconSourcePath,
+                    fallbackEntityType: SpecialistFeature(dataset: record.dataset)?.placeholderEntityType ?? "product"
+                )
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(record.title)
+                        .font(.headline)
+                    Text(record.dataset.replacingOccurrences(of: "_", with: " "))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let provenance {
+                        SourceBadge(presentation: provenance)
+                    }
                 }
+                Spacer(minLength: 0)
             }
         }
     }

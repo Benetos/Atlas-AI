@@ -10,6 +10,18 @@ struct ContentDetailView: View {
     @State private var feature = ContentDetailModel()
 
     var body: some View {
+        if let typed = SpecialistFeature(dataset: dataset) {
+            SpecialistDetailView(
+                feature: typed,
+                externalID: externalID,
+                sourceOrdinal: sourceOrdinal
+            )
+        } else {
+            genericDetail
+        }
+    }
+
+    private var genericDetail: some View {
         LoadableStateView(
             state: feature.state,
             loadingTitle: "Loading record…",
@@ -42,8 +54,6 @@ struct ContentDetailView: View {
                                 .padding(.vertical, 8)
                         }
                     }
-                } footer: {
-                    Text("This feature still uses Atlas’s lossless compatibility record. A dedicated screen can promote stable fields later.")
                 }
             }
         }

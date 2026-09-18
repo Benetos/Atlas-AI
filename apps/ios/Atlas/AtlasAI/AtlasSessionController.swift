@@ -111,7 +111,7 @@ struct AtlasSessionController {
         var entities: [Entity] = []
         if plan.shouldBrowseEntities, let entityType = plan.entityType {
             entities = try store.entities(type: entityType, limit: 8, offset: 0)
-        } else if !plan.shouldBrowseRecipes {
+        } else if plan.specialistRoute?.feature == .buildingParts || (!plan.shouldBrowseRecipes && !plan.shouldBrowseSpecialist) {
             for query in plan.localSearchQueries {
                 entities.append(
                     contentsOf: try store.searchEntities(
@@ -131,7 +131,7 @@ struct AtlasSessionController {
         // A uses question must show recipes that consume the item. A generic
         // recipe-name search mostly finds recipes that produce it and can crowd
         // the requested relationships out of the bounded card list.
-        if plan.shouldSearchRecipes, plan.goal != .uses {
+        if plan.shouldSearchRecipes, plan.goal != .uses, !plan.shouldBrowseSpecialist {
             for query in plan.localSearchQueries {
                 recipes.append(contentsOf: try store.searchRecipes(
                     query: query,
@@ -155,7 +155,7 @@ struct AtlasSessionController {
                     let using = try store.recipesUsing(type: first.entityType, id: first.gameID, limit: 8)
                     recipes.append(contentsOf: using.filter { plan.matchesIntendedKind($0.recipeKind) })
                 }
-            case .lookup, .browseEntities, .browseRecipes:
+            case .lookup, .browseEntities, .browseRecipes, .browseSpecialist:
                 break
             }
         }
@@ -165,7 +165,7 @@ struct AtlasSessionController {
             recipes = try store.recipes(kind: plan.recipeKind, limit: 8, offset: 0)
         }
 
-        if !plan.shouldBrowseRecipes {
+        if !plan.shouldBrowseRecipes && !plan.shouldBrowseSpecialist {
             for query in plan.localSearchQueries {
                 content.append(contentsOf: try store.searchContent(query: query, dataset: nil, limit: 5))
                 content = unique(content)
@@ -176,6 +176,15 @@ struct AtlasSessionController {
         var cards: [AtlasCard] = entities.prefix(8).map(AtlasCard.entity)
         cards.append(contentsOf: recipes.prefix(6).map(AtlasCard.recipe))
         cards.append(contentsOf: content.prefix(5).map(AtlasCard.content))
+
+        if plan.shouldBrowseSpecialist,
+           let route = plan.resolvedSpecialistRoute(matching: entities) {
+            let summary = route.filterSummary
+            let text = summary.isEmpty
+                ? "I opened the packed \(route.feature.title.lowercased()) guide."
+                : "I opened the packed \(route.feature.title.lowercased()) guide for \(summary)."
+            return AtlasReply(text: text, cards: unique(cards), note: nil)
+        }
 
         let text: String
         if entities.isEmpty && recipes.isEmpty && content.isEmpty {
@@ -206,7 +215,7 @@ struct AtlasSessionController {
                 } else {
                     text = "I found \(produced) packed recipes that make \(entity.title)."
                 }
-            case .lookup, .browseEntities, .browseRecipes:
+            case .lookup, .browseEntities, .browseRecipes, .browseSpecialist:
                 text = Self.lookupSummary(for: entity)
             }
         } else {

@@ -89,19 +89,24 @@ def main() -> int:
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     fetched: list[dict[str, object]] = []
+    reused = 0
 
     for index, row in enumerate(rows, start=1):
         commit_sha = row["source_commit_sha"]
         upstream_path = row["upstream_png_path"]
         destination = safe_destination(args.output_dir, commit_sha, upstream_path)
-        try:
-            blob = git_blob(args.source_repo, commit_sha, upstream_path)
-        except subprocess.CalledProcessError as error:
-            message = error.stderr.decode("utf-8", errors="replace").strip()
-            print(f"Unable to fetch {upstream_path}: {message}", file=sys.stderr)
-            return 1
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(blob)
+        if destination.is_file() and destination.stat().st_size > 0:
+            blob = destination.read_bytes()
+            reused += 1
+        else:
+            try:
+                blob = git_blob(args.source_repo, commit_sha, upstream_path)
+            except subprocess.CalledProcessError as error:
+                message = error.stderr.decode("utf-8", errors="replace").strip()
+                print(f"Unable to fetch {upstream_path}: {message}", file=sys.stderr)
+                return 1
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(blob)
         fetched.append({
             "source_commit_sha": commit_sha,
             "source_path": row["source_path"],
@@ -111,7 +116,7 @@ def main() -> int:
             "byte_size": len(blob),
         })
         if index % 100 == 0:
-            print(f"Fetched {index}/{len(rows)}")
+            print(f"Fetched {index}/{len(rows)} ({reused} already present)")
 
     receipt_path = args.output_dir / "fetch-receipt.json"
     receipt_path.write_text(
@@ -119,6 +124,7 @@ def main() -> int:
         encoding="utf-8",
     )
     print(f"Fetched assets: {len(fetched)}")
+    print(f"Reused existing files: {reused}")
     print(f"Bytes: {sum(int(item['byte_size']) for item in fetched)}")
     print(f"Receipt: {receipt_path}")
     return 0

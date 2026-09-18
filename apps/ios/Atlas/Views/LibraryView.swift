@@ -82,7 +82,14 @@ struct LibraryView: View {
         }
 
         var contentDataset: String? {
-            entityType == nil && recipeKind == nil ? rawValue : nil
+            switch self {
+            case .expeditions: rawValue
+            default: nil
+            }
+        }
+
+        var specialistFeature: SpecialistFeature? {
+            SpecialistFeature(dataset: rawValue)
         }
     }
 
@@ -98,20 +105,53 @@ struct LibraryView: View {
 
     var body: some View {
         @Bindable var session = session
-        return List {
-            if trimmedQuery.isEmpty {
-                browseSection
+        Group {
+            if let feature = session.browsing.specialistFeature {
+                // Keep specialist filters visible. Library search must not eject Fish
+                // into global FTS when the user types "night" / "frozen".
+                specialistBrowse(feature)
             } else {
-                searchSection
+                List {
+                    if trimmedQuery.isEmpty {
+                        browseSection
+                    } else {
+                        searchSection
+                    }
+                }
             }
         }
         .navigationTitle("Library")
-        .searchable(text: $session.query, prompt: "Items, recipes, expeditions, and more")
+        .searchable(
+            text: $session.query,
+            prompt: session.browsing.specialistFeature == nil
+                ? "Items, recipes, expeditions, and more"
+                : "Search \(session.browsing.title.lowercased()) or leave blank for filters"
+        )
         .task(id: browseTaskID) {
             await loadBrowse(reset: true)
         }
         .task(id: searchTaskID) {
             await searchAfterDebounce()
+        }
+    }
+
+    private func specialistBrowse(_ feature: SpecialistFeature) -> some View {
+        @Bindable var session = session
+        return VStack(spacing: 0) {
+            Picker("Category", selection: $session.browsing) {
+                ForEach(BrowseSection.allCases) { section in
+                    Text(section.title).tag(section)
+                }
+            }
+            .pickerStyle(.menu)
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            SpecialistCollectionView(
+                feature: feature,
+                usesLibraryTitle: true,
+                librarySearch: session.query
+            )
+            .id(feature)
         }
     }
 
@@ -224,8 +264,22 @@ struct LibraryView: View {
                 EntityCardView(entity: entity, provenance: packedProvenance)
             }
         case .recipe(let recipe):
-            AtlasOpenLink(destination: .recipe(id: recipe.recipeID), section: .library, replacesPath: true) {
-                RecipeCardView(recipe: recipe, provenance: packedProvenance)
+            HStack(alignment: .top, spacing: 12) {
+                AtlasOpenLink(destination: .recipe(id: recipe.recipeID), section: .library, replacesPath: true) {
+                    RecipeCardView(recipe: recipe, provenance: packedProvenance)
+                }
+                if recipe.recipeKind == "cooking" {
+                    AtlasOpenLink(
+                        destination: recipe.planDestination(),
+                        section: .library
+                    ) {
+                        Text("Open plan")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                    }
+                    .accessibilityLabel("Open plan for \(recipe.title)")
+                }
             }
         case .content(let record):
             AtlasOpenLink(
@@ -314,6 +368,8 @@ struct LibraryView: View {
                 page = try await catalog.entities(type: type, limit: pageSize, offset: session.browseOffset).map(AtlasCard.entity)
             } else if let kind = session.browsing.recipeKind {
                 page = try await catalog.recipes(kind: kind, limit: pageSize, offset: session.browseOffset).map(AtlasCard.recipe)
+            } else if session.browsing.specialistFeature != nil {
+                page = []
             } else if let dataset = session.browsing.contentDataset {
                 page = try await catalog.contentRecords(
                     dataset: dataset,

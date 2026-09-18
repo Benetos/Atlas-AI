@@ -103,7 +103,7 @@ final class OfflineAtlasTests: XCTestCase {
         let store = try fullStore()
 
         let manifest = try store.manifest()
-        XCTAssertEqual(manifest.packSchemaVersion, 1)
+        XCTAssertEqual(manifest.packSchemaVersion, 2)
         XCTAssertFalse(manifest.sourceCommitSHA.isEmpty)
 
         let ferrite = try store.searchEntities(
@@ -152,6 +152,25 @@ final class OfflineAtlasTests: XCTestCase {
         )
         XCTAssertNoThrow(try store.validateIntegrity())
         XCTAssertNoThrow(try store.validateReadOnlyBoundary())
+        XCTAssertEqual(try store.specialistSummaries(SpecialistQuery(feature: .fish, limit: 1_000)).count, 226)
+        XCTAssertEqual(try store.specialistSummaries(SpecialistQuery(feature: .bait, limit: 1_000)).count, 621)
+        XCTAssertEqual(
+            try store.specialistSummaries(
+                SpecialistQuery(feature: .fish, timeOfDay: "Night", limit: 1_000)
+            ).count,
+            208
+        )
+        XCTAssertEqual(
+            try store.specialistSummaries(
+                SpecialistQuery(feature: .fish, timeOfDay: "Day", limit: 1_000)
+            ).count,
+            200
+        )
+        let fishOptions = try store.specialistFilterOptions(feature: .fish)
+        XCTAssertFalse(fishOptions.times.contains("Both"))
+        XCTAssertFalse(fishOptions.biomes.contains("All"))
+        XCTAssertTrue(fishOptions.times.contains("Night"))
+        XCTAssertTrue(fishOptions.biomes.contains("Frozen"))
     }
 
     func testSearchIncludesMetadataAndFeatureCategoriesCanBeBrowsed() throws {
@@ -209,7 +228,11 @@ final class OfflineAtlasTests: XCTestCase {
 
     func testManifestRejectsUnsupportedVersionsAndInvalidSourceSHA() throws {
         try assertManifestRejected(
-            after: "update pack_manifest set pack_schema_version = 2",
+            after: "update pack_manifest set pack_schema_version = 1",
+            containing: "unsupported schema version"
+        )
+        try assertManifestRejected(
+            after: "update pack_manifest set pack_schema_version = 99",
             containing: "unsupported schema version"
         )
         try assertManifestRejected(

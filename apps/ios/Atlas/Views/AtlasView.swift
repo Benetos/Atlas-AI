@@ -199,8 +199,19 @@ struct AtlasView: View {
                 EntityCardView(entity: entity, provenance: packedProvenance)
             }
         case .recipe(let recipe):
-            AtlasOpenLink(destination: .recipe(id: recipe.recipeID), section: .atlas, replacesPath: true) {
-                RecipeCardView(recipe: recipe, provenance: packedProvenance)
+            HStack(alignment: .top, spacing: 12) {
+                AtlasOpenLink(destination: .recipe(id: recipe.recipeID), section: .atlas, replacesPath: true) {
+                    RecipeCardView(recipe: recipe, provenance: packedProvenance)
+                }
+                if recipe.recipeKind == "cooking" {
+                    AtlasOpenLink(destination: recipe.planDestination(), section: .atlas) {
+                        Text("Open plan")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                    }
+                    .accessibilityLabel("Open plan for \(recipe.title)")
+                }
             }
         case .content(let record):
             AtlasOpenLink(
@@ -336,6 +347,20 @@ struct AtlasView: View {
             packReleaseID: turn.packReleaseID
         )
         conversation.messages.append(assistant)
+        if let destination = turn.navigationDestination {
+            // Defer so TabView/NavigationStack finishes committing the new message
+            // before the specialist push — otherwise iPhone can drop the route.
+            Task { @MainActor in
+                router.select(destination, in: .atlas)
+            }
+        } else if let openSpecialist = turn.followUps.first(where: {
+            if case .openSpecialist = $0.intent { return true }
+            return false
+        }), case .openSpecialist(let route) = openSpecialist.intent {
+            Task { @MainActor in
+                router.select(route.destination, in: .atlas)
+            }
+        }
     }
 
     @MainActor
@@ -364,6 +389,8 @@ struct AtlasView: View {
                 .recipePlan(type: type, id: id, quantity: quantity),
                 in: .atlas
             )
+        case .openSpecialist(let route):
+            router.select(route.destination, in: .atlas)
         }
     }
 

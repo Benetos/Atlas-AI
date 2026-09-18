@@ -231,6 +231,7 @@ actor AtlasConversationEngine {
             }
             context.lastEvidenceDigest = bundle.digest
             context.lastPackReleaseID = request.packIdentity.sourceCommitSHA
+            let specialistDestination = queryPlan.resolvedSpecialistRoute(matching: collected.entities)?.destination
 
             return ValidatedAssistantTurn(
                 text: rendered.text,
@@ -243,7 +244,8 @@ actor AtlasConversationEngine {
                 usedDeterministicFallback: usedFallback,
                 packReleaseID: request.packIdentity.sourceCommitSHA,
                 evidenceDigest: bundle.digest,
-                refreshRequired: false
+                refreshRequired: false,
+                navigationDestination: specialistDestination
             )
         } catch is CancellationError {
             return cancelledTurn(request: request)
@@ -269,6 +271,8 @@ actor AtlasConversationEngine {
         catalog: any NMSCatalog
     ) async throws -> CollectedLocal {
         var entities: [Entity] = []
+        let collectingBuildingMaterial = plan.shouldBrowseSpecialist
+            && plan.specialistRoute?.feature == .buildingParts
         if plan.shouldBrowseEntities, let entityType = plan.entityType {
             entities = try await catalog.entities(
                 type: entityType,
@@ -278,7 +282,7 @@ actor AtlasConversationEngine {
             for entity in entities {
                 _ = tools.database.ledger.issue(payload: .entity(entity), source: .packed)
             }
-        } else if !plan.shouldBrowseRecipes {
+        } else if collectingBuildingMaterial || (!plan.shouldBrowseRecipes && !plan.shouldBrowseSpecialist) {
             for query in plan.localSearchQueries {
                 let output = try await tools.invoke(
                     LocalToolCall(
@@ -301,14 +305,18 @@ actor AtlasConversationEngine {
 
         // Description matches help discovery, but an exact item name resolves
         // the subject without promoting every mention of that item to a card.
-        if !plan.shouldBrowseEntities {
+        if collectingBuildingMaterial {
+            let exact = entities.filter { plan.exactlyMatches($0) }
+            if !exact.isEmpty { entities = exact }
+            entities = Array(entities.prefix(1))
+        } else if !plan.shouldBrowseEntities && !plan.shouldBrowseSpecialist {
             let exact = entities.filter { plan.exactlyMatches($0) }
             if !exact.isEmpty { entities = exact }
             entities = Array(entities.prefix(ConversationBounds.answerEntityLimit))
         }
 
         var recipes: [Recipe] = []
-        if plan.shouldSearchRecipes, plan.goal != .uses, entities.isEmpty || plan.shouldBrowseRecipes {
+        if !plan.shouldBrowseSpecialist, plan.shouldSearchRecipes, plan.goal != .uses, entities.isEmpty || plan.shouldBrowseRecipes {
             for query in plan.localSearchQueries {
                 let output = try await tools.invoke(
                     LocalToolCall(
@@ -329,7 +337,7 @@ actor AtlasConversationEngine {
             }
         }
 
-        if entities.count == 1, let first = entities.first {
+        if !plan.shouldBrowseSpecialist, entities.count == 1, let first = entities.first {
             switch plan.goal {
             case .uses:
                 let output = try await tools.invoke(
@@ -368,7 +376,7 @@ actor AtlasConversationEngine {
                         recipes.append(contentsOf: rows.filter { plan.matchesIntendedKind($0.recipeKind) })
                     }
                 }
-            case .lookup, .browseEntities, .browseRecipes:
+            case .lookup, .browseEntities, .browseRecipes, .browseSpecialist:
                 break
             }
         }
@@ -401,20 +409,29 @@ actor AtlasConversationEngine {
         }
 
         var content: [ContentRecord] = []
-        if !plan.shouldBrowseRecipes, entities.isEmpty, recipes.isEmpty {
-            for query in plan.localSearchQueries {
-                let output = try await tools.invoke(
-                    LocalToolCall(
-                        name: LocalToolName.searchContent.rawValue,
-                        query: query,
-                        limit: ConversationBounds.answerContentLimit
+        if !plan.shouldBrowseSpecialist, !plan.shouldBrowseRecipes, entities.isEmpty, recipes.isEmpty {
+            // Fishing condition prompts must not fall through to Stories FTS
+            // ("Other History" uniquely matches catch+night+frozen+planet).
+            let lower = plan.originalPrompt.lowercased()
+            let looksLikeFishing = lower.contains("catch") || lower.contains("fish")
+                || lower.contains("fishing") || lower.contains("bait")
+                || ((lower.contains("night") || lower.contains("storm"))
+                    && (lower.contains("frozen") || lower.contains("planet")))
+            if !looksLikeFishing {
+                for query in plan.localSearchQueries {
+                    let output = try await tools.invoke(
+                        LocalToolCall(
+                            name: LocalToolName.searchContent.rawValue,
+                            query: query,
+                            limit: ConversationBounds.answerContentLimit
+                        )
                     )
-                )
-                if case .content(let rows) = output.payload {
-                    content.append(contentsOf: rows)
+                    if case .content(let rows) = output.payload {
+                        content.append(contentsOf: rows)
+                    }
+                    content = uniqueContent(content)
+                    if content.count >= ConversationBounds.answerContentLimit { break }
                 }
-                content = uniqueContent(content)
-                if content.count >= ConversationBounds.answerContentLimit { break }
             }
         }
 

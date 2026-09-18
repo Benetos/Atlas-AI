@@ -47,6 +47,7 @@ enum AppDestination: Hashable, Codable, Sendable {
     case content(dataset: String, id: String, sourceOrdinal: Int)
     case savedArtifact(id: String)
     case recipePlan(type: String, id: String, quantity: Int, artifactID: String? = nil)
+    case specialist(SpecialistRoute)
     case unavailable(UnavailableDestination)
 
     private static let currentSchemaVersion = 1
@@ -60,6 +61,7 @@ enum AppDestination: Hashable, Codable, Sendable {
         case sourceOrdinal
         case artifactID
         case quantity
+        case specialist
         case unavailable
     }
 
@@ -69,6 +71,7 @@ enum AppDestination: Hashable, Codable, Sendable {
         case content
         case savedArtifact
         case recipePlan
+        case specialist
         case unavailable
     }
 
@@ -97,6 +100,9 @@ enum AppDestination: Hashable, Codable, Sendable {
             try container.encode(id, forKey: .id)
             try container.encode(quantity, forKey: .quantity)
             try container.encodeIfPresent(artifactID, forKey: .artifactID)
+        case .specialist(let route):
+            try container.encode(Kind.specialist, forKey: .kind)
+            try container.encode(route, forKey: .specialist)
         case .unavailable(let destination):
             try container.encode(Kind.unavailable, forKey: .kind)
             try container.encode(destination, forKey: .unavailable)
@@ -141,6 +147,8 @@ enum AppDestination: Hashable, Codable, Sendable {
                 quantity: try container.decode(Int.self, forKey: .quantity),
                 artifactID: try container.decodeIfPresent(String.self, forKey: .artifactID)
             )
+        case .specialist:
+            self = .specialist(try container.decode(SpecialistRoute.self, forKey: .specialist))
         case .unavailable:
             self = .unavailable(try container.decode(UnavailableDestination.self, forKey: .unavailable))
         }

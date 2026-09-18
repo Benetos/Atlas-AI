@@ -28,6 +28,7 @@ final class AppModel {
     var packUpdateMessage: String?
     var packUpdateProgress: Double?
     var isPackUpdateRunning = false
+    var packDirectory: URL?
 
     let services: AppServices
     private var activationStore: PackActivationStore?
@@ -135,6 +136,7 @@ final class AppModel {
         pack = manifest
         packIdentity = PackIdentity(manifest: manifest, packRole: verified.sidecar.packRole)
         packRole = verified.sidecar.packRole
+        packDirectory = verified.sqliteURL.deletingLastPathComponent()
         packRecoveryMessage = verified.recoveredFromRollback
             ? "Atlas recovered the previous verified database after the active copy failed validation."
             : nil

@@ -162,6 +162,21 @@ install -m 0644 "${sqlite_path}" "${stage_dir}/nms-reference.sqlite"
 install -m 0644 "${sidecar_path}" "${stage_dir}/pack-manifest.json"
 install -m 0644 "${packaging_manifest}" "${stage_dir}/Manifest.json"
 
+"${python_bin}" "${repo_root}/scripts/fetch_nms_assets.py" --approved \
+    --asset-manifest "${import_dir}/assets.csv" \
+    --source-repo "${repo_root}/.cache/nms-handbook" \
+    --output-dir "${repo_root}/build/nms-assets"
+"${python_bin}" "${repo_root}/scripts/pack_nms_icons.py" \
+    --asset-manifest "${import_dir}/assets.csv" \
+    --fetch-dir "${repo_root}/build/nms-assets" \
+    --pack-dir "${sqlite_output_dir}"
+if [[ ! -d "${sqlite_output_dir}/icons" ]]; then
+    printf 'Packed icons directory is missing: %s/icons\n' "${sqlite_output_dir}" >&2
+    exit 1
+fi
+mkdir -p "${stage_dir}/icons"
+cp -R "${sqlite_output_dir}/icons/." "${stage_dir}/icons/"
+
 "${python_bin}" - \
     "${import_dir}/manifest.json" \
     "${stage_dir}/nms-reference.sqlite" \
@@ -281,7 +296,7 @@ for key, expected in EXPECTED_IMPORT_COUNTS.items():
 
 require_equal(sidecar.get("asset_pack_id"), "nms-reference", "sidecar asset-pack ID")
 require_equal(sidecar.get("pack_role"), "production", "sidecar pack role")
-require_equal(sidecar.get("pack_schema_version"), 1, "sidecar pack schema")
+require_equal(sidecar.get("pack_schema_version"), 2, "sidecar pack schema")
 require_equal(sidecar.get("contract_version"), 1, "sidecar contract version")
 require_equal(sidecar.get("source_repository"), PINNED_REPOSITORY, "sidecar repository")
 require_equal(sidecar.get("source_commit_sha"), PINNED_SOURCE_COMMIT, "sidecar source commit")
@@ -305,14 +320,29 @@ require_equal(packaging_manifest.get("assetPackID"), "nms-reference", "manifest 
 selectors = packaging_manifest.get("fileSelectors")
 if not isinstance(selectors, list) or not all(isinstance(item, dict) for item in selectors):
     fail("asset-pack fileSelectors must be an array of objects")
-selector_files = [item.get("file") for item in selectors]
+selector_files = []
+selector_directories = []
+for item in selectors:
+    if "file" in item:
+        selector_files.append(item.get("file"))
+    if "directory" in item:
+        selector_directories.append(item.get("directory"))
 if not all(isinstance(item, str) for item in selector_files):
     fail("every asset-pack file selector must name a file")
+if not all(isinstance(item, str) for item in selector_directories):
+    fail("every asset-pack directory selector must name a directory")
 require_equal(
     sorted(selector_files),
     ["nms-reference.sqlite", "pack-manifest.json"],
     "asset-pack file selectors",
 )
+require_equal(selector_directories, ["icons"], "asset-pack directory selectors")
+icons_dir = sqlite_path.parent / "icons"
+if not icons_dir.is_dir():
+    fail(f"packed icons directory is missing: {icons_dir}")
+packed_icons = sum(1 for path in icons_dir.rglob("*.png") if path.is_file())
+if packed_icons <= 0:
+    fail("packed icons directory does not contain any PNG files")
 platforms = packaging_manifest.get("platforms")
 if not isinstance(platforms, list) or "iOS" not in platforms:
     fail("asset-pack platforms must include iOS")
@@ -347,7 +377,7 @@ try:
           from pack_manifest
         """
     ).fetchone()
-    require_equal(row[0], 1, "SQLite pack schema")
+    require_equal(row[0], 2, "SQLite pack schema")
     require_equal(row[1], 1, "SQLite contract version")
     require_equal(row[2], PINNED_REPOSITORY, "SQLite source repository")
     require_equal(row[3], PINNED_SOURCE_COMMIT, "SQLite source commit")
@@ -367,6 +397,36 @@ try:
     for key, table in TABLES.items():
         actual = connection.execute(f"select count(*) from {table}").fetchone()[0]
         require_equal(actual, EXPECTED_SQLITE_COUNTS[key], f"SQLite table count {table}")
+    FEATURE_TABLE_COUNTS = {
+        "nms_fish": 226,
+        "nms_bait": 621,
+        "nms_building_parts": 1_654,
+        "nms_corvette_parts": 633,
+        "nms_expeditions": 21,
+        "nms_fossils": 143,
+        "nms_legacy_items": 20,
+        "nms_building_blueprints": 217,
+        "nms_ship_parts": 284,
+        "nms_special_purchases": 332,
+        "nms_special_rewards": 594,
+        "nms_stories": 7,
+        "nms_fish_biomes": 331,
+        "nms_building_part_requirements": 1_571,
+        "nms_corvette_part_categories": 636,
+        "nms_corvette_part_requirements": 110,
+        "nms_story_pages": 40,
+        "nms_story_entries": 592,
+        "nms_special_reward_sources": 657,
+    }
+    for table, expected in FEATURE_TABLE_COUNTS.items():
+        present = connection.execute(
+            "select 1 from sqlite_master where type = 'table' and name = ?",
+            (table,),
+        ).fetchone()
+        if present is None:
+            fail(f"SQLite is missing required feature table {table}")
+        actual = connection.execute(f"select count(*) from {table}").fetchone()[0]
+        require_equal(actual, expected, f"SQLite feature table count {table}")
     for fts_table, canonical_table in FTS_TABLES.items():
         present = connection.execute(
             "select 1 from sqlite_master where type = 'table' and name = ?", (fts_table,)

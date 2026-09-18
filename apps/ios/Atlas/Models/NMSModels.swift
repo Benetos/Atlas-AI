@@ -80,6 +80,7 @@ struct Entity: Identifiable, Hashable, Sendable {
     var colorB: String?
     var sourceDataset: String
     var sourceCommitSHA: String
+    var iconSourcePath: String? = nil
 
     var id: String { "\(entityType):\(gameID)" }
 
@@ -113,6 +114,10 @@ struct Recipe: Identifiable, Hashable, Sendable {
         if let outputTitle, !outputTitle.isEmpty { return outputTitle }
         return recipeID
     }
+
+    func planDestination(quantity: Int = 1) -> AppDestination {
+        .recipePlan(type: outputEntityType, id: outputGameID, quantity: quantity)
+    }
 }
 
 struct RecipeIngredient: Identifiable, Hashable, Sendable {
@@ -133,6 +138,7 @@ struct ContentRecord: Identifiable, Hashable, Sendable {
     var displayName: String?
     var payload: String
     var sourceCommitSHA: String
+    var iconSourcePath: String? = nil
 
     var id: String { "\(dataset):\(externalID):\(sourceOrdinal)" }
 

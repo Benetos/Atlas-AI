@@ -22,8 +22,9 @@ struct EntityDetailView: View {
             List {
                 Section {
                     HStack(spacing: 12) {
-                        PlaceholderIcon(
-                            entityType: content.entity.entityType,
+                        PackedIcon(
+                            sourcePath: content.entity.iconSourcePath,
+                            fallbackEntityType: content.entity.entityType,
                             colorR: content.entity.colorR,
                             colorG: content.entity.colorG,
                             colorB: content.entity.colorB
