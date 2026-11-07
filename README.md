@@ -38,6 +38,7 @@ into Supabase.
 - [Database schema](supabase/schema/nms_reference_schema.sql)
 - [Generated application database types](supabase/types/database.ts)
 - [iOS app](apps/ios/README.md)
+- [Private web companion](apps/web/README.md)
 
 ## Local preparation
 
@@ -104,6 +105,20 @@ fails the build rather than substituting the tiny test fixture. Release obtains
 the same production data from an essential Apple-hosted Background Asset. See
 [docs/APP.md](docs/APP.md). `./scripts/prepare_ios_debug_pack.sh` performs the
 source sync, transform, and pack build in one step for local Xcode work.
+
+### Private web companion
+
+After the SQLite pack exists, run a localhost-only browser companion that reads
+the same tables (`nms_entities`, `nms_recipes`, `nms_recipe_ingredients`, and
+packed feature records). Rebuild and start:
+
+```bash
+./scripts/prepare_ios_debug_pack.sh
+python3 apps/web/server.py --host 127.0.0.1 --port 8765
+```
+
+Open http://127.0.0.1:8765/ . This is a private local finish line — do not
+publish it. Details: [apps/web/README.md](apps/web/README.md).
 
 Build the validated Apple-hosted archive (including the SQLite file and
 sidecar) with `./scripts/package_nms_asset_pack.sh`. Release builds embed the
