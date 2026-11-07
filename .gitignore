@@ -11,3 +11,7 @@ apps/ios/Packs/nms-reference/*.sqlite
 apps/ios/Packs/nms-reference/pack-manifest.json
 *.xcuserstate
 xcuserdata/
+apps/web/node_modules/
+apps/web/.next/
+apps/web/.data/
+apps/web/out/

@@ -1,0 +1,27 @@
+{
+  "name": "atlas-web-companion",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "node scripts/migrate.mjs && node scripts/load_pack.mjs && next dev -p 8765",
+    "build": "next build && node scripts/migrate.mjs && node scripts/load_pack.mjs",
+    "start": "next start -p ${PORT:-8765}",
+    "migrate": "node scripts/migrate.mjs",
+    "load-pack": "node scripts/load_pack.mjs",
+    "prepare-seed": "python3 scripts/prepare_seed.py"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.2.17",
+    "next": "^15.1.0",
+    "pg": "^8.13.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.7.2"
+  }
+}

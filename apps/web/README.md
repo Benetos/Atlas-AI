@@ -1,18 +1,31 @@
 # Atlas private web companion
 
-A local-only browser companion for the same pinned NMS SQLite pack the iOS app
-reads. It does **not** publish a public URL, call a cloud LLM, or invent a second
-data model. Canonical facts come only from `build/nms-sqlite/nms-reference.sqlite`.
+Browser companion for the same pinned NMS pack the iOS app reads. Canonical
+facts come from the transform → SQLite pipeline (entities, recipes,
+ingredients, content records). Bookmarks stay in `localStorage`.
 
 Licensing posture remains internal. Show NMS-Handbook attribution; do not ship
 extracted images.
 
-## Rebuild the snapshot
+## Hosted (Cursor publish-app)
+
+`apps/web` is a Next.js app with Postgres:
+
+- `cursor-app.json` declares `{ "database": "postgres" }`
+- `migrations/` creates the pack tables
+- `seed/*.jsonl.gz` holds pack rows exported from the SQLite snapshot
+- `npm run build` applies migrations and loads the seed when `DATABASE_URL` is set
+
+Publish this folder with Cursor `publish-app` (`project_dir=apps/web`). Private
+sign-in at the URL is expected.
+
+## Rebuild pack seed
 
 From the repository root:
 
 ```bash
 ./scripts/prepare_ios_debug_pack.sh
+python3 apps/web/scripts/prepare_seed.py
 ```
 
 Or step by step:
@@ -27,40 +40,44 @@ python3 scripts/build_nms_sqlite.py \
   --import-dir build/nms-import \
   --output-dir build/nms-sqlite \
   --pack-role production
+python3 apps/web/scripts/prepare_seed.py
 ```
 
-Generated JSON/CSV/SQLite under `.cache/` and `build/` stay gitignored. Do not
-commit upstream Handbook JSON, MXML, or images.
+Generated Handbook blobs under `.cache/` and `build/` stay gitignored. The
+compressed JSONL seed under `apps/web/seed/` is committed so the hosted build
+can load Postgres without shipping upstream Handbook JSON/MXML/images.
 
-Pinned baseline (see `docs/BASELINE_VALIDATION.md`):
+Pinned baseline:
 
 - Source commit `142d9ffd8078944722243398202f22cbef47cd02`
 - ~2,597 entities and ~2,181 recipes
 
-If a different Handbook commit is imported, the Info page shows that SHA.
-
-## Start the local server
+## Local Python + SQLite
 
 ```bash
+./scripts/prepare_ios_debug_pack.sh
 python3 apps/web/server.py --host 127.0.0.1 --port 8765
 ```
 
-Open [http://127.0.0.1:8765/](http://127.0.0.1:8765/). Bind only to localhost
-unless you intentionally share on a private network. Do not publish this app.
+Open [http://127.0.0.1:8765/](http://127.0.0.1:8765/). Uses
+`build/nms-sqlite/nms-reference.sqlite` directly.
 
-Optional pack override:
+## Local Next.js + PGlite
 
 ```bash
-python3 apps/web/server.py --pack /path/to/nms-reference.sqlite
+cd apps/web
+npm install
+npm run migrate
+npm run load-pack
+npm run dev
 ```
+
+When `DATABASE_URL` is unset, migrate/load target local PGlite under `.data/`.
 
 ## Slice covered
 
 - Ask: “what is Ferrite Dust for?” → entity + recipe cards from the pack
-- Item page: `display_name`, then `name`, then `game_id`, plus type / category /
-  subcategory / rarity / legality / base value / subtitle / description
-- Recipes that produce or consume the item, with kind, amounts, time, and
-  ordered ingredient links
+- Item / recipe detail with producing and using links
 - Library browse: products, substances, technology, crafting, refining, cooking
 - Saved bookmarks in `localStorage` (no accounts)
 - Info: source commit SHA, record counts, NMS-Handbook attribution
