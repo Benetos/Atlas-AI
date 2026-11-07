@@ -39,20 +39,41 @@ async function dirHasSeed(dir) {
   }
 }
 
-async function downloadSeedTo(cacheDir, repo, repoPath, ref) {
-  await mkdir(cacheDir, { recursive: true });
+function seedFileUrls(repo, repoPath, ref, name) {
   // Keep slashes in branch refs (encodeURIComponent would break cursor/foo).
   const refPath = String(ref)
     .split("/")
     .map((part) => encodeURIComponent(part))
     .join("/");
+  return [
+    `https://raw.githubusercontent.com/${repo}/${refPath}/${repoPath}/${name}`,
+    // jsDelivr as a second path if GitHub raw is blocked on the build host.
+    `https://cdn.jsdelivr.net/gh/${repo}@${refPath}/${repoPath}/${name}`,
+  ];
+}
+
+async function downloadSeedTo(cacheDir, repo, repoPath, ref) {
+  await mkdir(cacheDir, { recursive: true });
   for (const name of SEED_FILES) {
-    const urlPath = `https://raw.githubusercontent.com/${repo}/${refPath}/${repoPath}/${name}`;
-    const res = await fetch(urlPath);
-    if (!res.ok) {
-      throw new Error(`GET ${urlPath} -> ${res.status}`);
+    const urls = seedFileUrls(repo, repoPath, ref, name);
+    let buf = null;
+    let lastError = null;
+    for (const urlPath of urls) {
+      try {
+        const res = await fetch(urlPath);
+        if (!res.ok) {
+          lastError = new Error(`GET ${urlPath} -> ${res.status}`);
+          continue;
+        }
+        buf = Buffer.from(await res.arrayBuffer());
+        break;
+      } catch (error) {
+        lastError = error;
+      }
     }
-    const buf = Buffer.from(await res.arrayBuffer());
+    if (!buf) {
+      throw lastError ?? new Error(`failed to download ${name}`);
+    }
     await writeFile(path.join(cacheDir, name), buf);
   }
 }
@@ -68,6 +89,13 @@ async function resolveSeedDir() {
   if (await dirHasSeed(repoSeed)) {
     console.log(`load_pack: using repo seed ${repoSeed}`);
     return { dir: repoSeed, ephemeral: false };
+  }
+
+  // Optional in-tree build seed (must never live under public/).
+  const buildSeed = path.join(root, "build-seed");
+  if (await dirHasSeed(buildSeed)) {
+    console.log(`load_pack: using build-seed ${buildSeed}`);
+    return { dir: buildSeed, ephemeral: false };
   }
 
   // Legacy local path (must not be present in publish tree).

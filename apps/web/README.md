@@ -24,6 +24,10 @@ extracted images.
   `public/` — Cursor hosting is Vercel for Platforms and public files are not
   in the serverless function file trace
 
+`vercel.json` sets `"framework": "nextjs"` so Cursor/Vercel for Platforms does
+not treat `public/` as a static-only “Other” output (that symptom is hard text
+`NOT_FOUND` on `/` and `/api/*` while `/spa.html` still 200s).
+
 Publish this folder with Cursor `publish-app` (`project_dir=apps/web`). Private
 sign-in at the URL is expected until visibility is set to Public.
 

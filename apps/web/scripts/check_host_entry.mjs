@@ -102,6 +102,21 @@ try {
   errors.push("missing seed-source.json (hosted build fetch map for pack/web-seed)");
 }
 
+try {
+  const vercel = JSON.parse(await readFile(path.join(root, "vercel.json"), "utf8"));
+  if (vercel.framework !== "nextjs") {
+    errors.push('vercel.json must set "framework": "nextjs" (prevents static-only public/ deploys)');
+  }
+} catch {
+  errors.push('missing vercel.json with "framework": "nextjs"');
+}
+
+try {
+  await access(path.join(root, "public", "index.html"));
+} catch {
+  errors.push("missing public/index.html (sync from spa.html — static fallback for /)");
+}
+
 if (errors.length) {
   console.error("check_host_entry FAILED:");
   for (const e of errors) console.error(" -", e);
