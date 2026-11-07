@@ -15,6 +15,9 @@ extracted images.
 - `migrations/` creates the pack tables
 - `seed/*.jsonl.gz` holds pack rows exported from the SQLite snapshot
 - `npm run build` applies migrations and loads the seed when `DATABASE_URL` is set
+- `/` rewrites to `public/spa.html` (static entry). Do not serve the shell via an
+  `app/route.ts` that `fs.readFile`s HTML — Cursor hosting is Vercel for Platforms
+  and public files are not in the serverless function file trace.
 
 Publish this folder with Cursor `publish-app` (`project_dir=apps/web`). Private
 sign-in at the URL is expected.

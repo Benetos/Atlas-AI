@@ -20,7 +20,11 @@ from store import NMSStore, PackError
 ROOT = Path(__file__).resolve().parent
 REPO_ROOT = ROOT.parent.parent
 DEFAULT_PACK = REPO_ROOT / "build" / "nms-sqlite" / "nms-reference.sqlite"
-STATIC_DIR = ROOT / "static"
+# Prefer the same public/ tree Next/Cursor publish-app serves (avoid a
+# deprecated top-level static/ that Next.js also tries to mount).
+PUBLIC_DIR = ROOT / "public"
+STATIC_DIR = PUBLIC_DIR / "static"
+SPA_HTML = PUBLIC_DIR / "spa.html"
 
 ENTITY_TYPES = frozenset({"product", "substance", "technology"})
 RECIPE_KINDS = frozenset({"crafting", "refining", "cooking"})
@@ -323,8 +327,8 @@ class CompanionHandler(BaseHTTPRequestHandler):
                     return
                 self._json({"recipe": recipe})
                 return
-            if path == "/" or path == "/index.html":
-                self._file(STATIC_DIR / "index.html")
+            if path == "/" or path == "/index.html" or path == "/spa.html":
+                self._file(SPA_HTML if SPA_HTML.is_file() else STATIC_DIR / "index.html")
                 return
             if path.startswith("/static/"):
                 relative = path[len("/static/") :]
@@ -334,9 +338,9 @@ class CompanionHandler(BaseHTTPRequestHandler):
                     return
                 self._file(target)
                 return
-            # SPA deep links fall through to index.html
+            # SPA deep links fall through to spa.html
             if path.startswith(("/ask", "/library", "/saved", "/info", "/item/", "/recipe/")):
-                self._file(STATIC_DIR / "index.html")
+                self._file(SPA_HTML if SPA_HTML.is_file() else STATIC_DIR / "index.html")
                 return
             self._not_found()
         except PackError as exc:

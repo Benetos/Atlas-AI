@@ -4,11 +4,12 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "node scripts/migrate.mjs && node scripts/load_pack.mjs && next dev -p 8765",
-    "build": "next build && node scripts/migrate.mjs && node scripts/load_pack.mjs",
-    "start": "next start -p ${PORT:-8765}",
+    "build": "node scripts/check_host_entry.mjs && next build && node scripts/migrate.mjs && node scripts/load_pack.mjs",
+    "start": "next start -H 0.0.0.0 -p ${PORT:-8765}",
     "migrate": "node scripts/migrate.mjs",
     "load-pack": "node scripts/load_pack.mjs",
-    "prepare-seed": "python3 scripts/prepare_seed.py"
+    "prepare-seed": "python3 scripts/prepare_seed.py",
+    "check-host-entry": "node scripts/check_host_entry.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",
