@@ -1,11 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   serverExternalPackages: ["@electric-sql/pglite", "pg"],
-  // Cursor publish-app hosts on Vercel for Platforms. Serve the SPA as a
-  // traced public asset — do not fs.readFile spa.html from a Route Handler
-  // (public files are not in the serverless function file trace).
+  // `/` is owned by app/route.ts (bundled SPA_HTML). Keep a rewrite as a
+  // secondary path to the static shell for hosts that serve public/ directly.
   async rewrites() {
-    return [{ source: "/", destination: "/spa.html" }];
+    return [{ source: "/spa", destination: "/spa.html" }];
   },
 };
 

@@ -13,14 +13,19 @@ extracted images.
 
 - `cursor-app.json` declares `{ "database": "postgres" }`
 - `migrations/` creates the pack tables
-- `seed/*.jsonl.gz` holds pack rows exported from the SQLite snapshot
-- `npm run build` applies migrations and loads the seed when `DATABASE_URL` is set
-- `/` rewrites to `public/spa.html` (static entry). Do not serve the shell via an
-  `app/route.ts` that `fs.readFile`s HTML — Cursor hosting is Vercel for Platforms
-  and public files are not in the serverless function file trace.
+- Pack seed JSONL.gz lives in **`pack/web-seed/`** (repo root), outside this
+  publish folder, so Public privacy review is not tripped by downloadable
+  archives in the app upload
+- `npm run build` applies migrations and `load_pack` (resolves seed from the
+  repo checkout, `SEED_DIR`, or GitHub raw → `.data/seed-cache`, then scrubs
+  the cache after loading `DATABASE_URL`)
+- `/` is `app/route.ts` returning bundled `SPA_HTML` from `lib/spa-html.ts`
+  (synced from `public/spa.html`). Do not `fs.readFile` the shell from
+  `public/` — Cursor hosting is Vercel for Platforms and public files are not
+  in the serverless function file trace
 
 Publish this folder with Cursor `publish-app` (`project_dir=apps/web`). Private
-sign-in at the URL is expected.
+sign-in at the URL is expected until visibility is set to Public.
 
 ## Rebuild pack seed
 
@@ -31,24 +36,8 @@ From the repository root:
 python3 apps/web/scripts/prepare_seed.py
 ```
 
-Or step by step:
-
-```bash
-./scripts/sync_nms_source.sh
-python3 scripts/transform_nms.py \
-  --source-dir .cache/nms-handbook/JSON_Files \
-  --source-repo .cache/nms-handbook \
-  --output-dir build/nms-import
-python3 scripts/build_nms_sqlite.py \
-  --import-dir build/nms-import \
-  --output-dir build/nms-sqlite \
-  --pack-role production
-python3 apps/web/scripts/prepare_seed.py
-```
-
-Generated Handbook blobs under `.cache/` and `build/` stay gitignored. The
-compressed JSONL seed under `apps/web/seed/` is committed so the hosted build
-can load Postgres without shipping upstream Handbook JSON/MXML/images.
+Writes `pack/web-seed/*.jsonl.gz` + `pack_manifest.json`. Generated Handbook
+blobs under `.cache/` and `build/` stay gitignored.
 
 Pinned baseline:
 
@@ -76,6 +65,7 @@ npm run dev
 ```
 
 When `DATABASE_URL` is unset, migrate/load target local PGlite under `.data/`.
+`load_pack` reads `../../pack/web-seed` from a full repo checkout.
 
 ## Slice covered
 

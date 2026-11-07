@@ -9,6 +9,7 @@
     "migrate": "node scripts/migrate.mjs",
     "load-pack": "node scripts/load_pack.mjs",
     "prepare-seed": "python3 scripts/prepare_seed.py",
+    "sync-spa-html": "node scripts/sync_spa_html.mjs",
     "check-host-entry": "node scripts/check_host_entry.mjs"
   },
   "dependencies": {

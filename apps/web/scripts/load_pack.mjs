@@ -1,10 +1,15 @@
 /**
- * Load NMS pack facts into Postgres/PGlite from the committed seed
+ * Load NMS pack facts into Postgres/PGlite from pack/web-seed
  * (exported from the same transform → SQLite pipeline).
+ *
+ * Seed gzips intentionally live outside apps/web so Cursor publish-app does
+ * not ship downloadable archives in the hosted project tree. Hosted builds
+ * fetch them from GitHub raw into .data/seed-cache, load DATABASE_URL, then
+ * delete the cache.
  */
 import { createGunzip } from "node:zlib";
 import { createReadStream } from "node:fs";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, access, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import readline from "node:readline";
@@ -13,9 +18,114 @@ import { PGlite } from "@electric-sql/pglite";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
-const seedDir = path.join(root, "seed");
 const url = process.env.DATABASE_URL?.trim() ?? "";
 const PUBLIC_SOURCE_REPO = "https://github.com/ApexFatality93/NMS-Handbook";
+const SEED_FILES = [
+  "pack_manifest.json",
+  "entities.jsonl.gz",
+  "recipes.jsonl.gz",
+  "recipe_ingredients.jsonl.gz",
+  "content_records.jsonl.gz",
+];
+
+async function dirHasSeed(dir) {
+  try {
+    for (const name of SEED_FILES) {
+      await access(path.join(dir, name));
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function downloadSeedTo(cacheDir, repo, repoPath, ref) {
+  await mkdir(cacheDir, { recursive: true });
+  // Keep slashes in branch refs (encodeURIComponent would break cursor/foo).
+  const refPath = String(ref)
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+  for (const name of SEED_FILES) {
+    const urlPath = `https://raw.githubusercontent.com/${repo}/${refPath}/${repoPath}/${name}`;
+    const res = await fetch(urlPath);
+    if (!res.ok) {
+      throw new Error(`GET ${urlPath} -> ${res.status}`);
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    await writeFile(path.join(cacheDir, name), buf);
+  }
+}
+
+async function resolveSeedDir() {
+  const fromEnv = process.env.SEED_DIR?.trim();
+  if (fromEnv && (await dirHasSeed(fromEnv))) {
+    console.log(`load_pack: using SEED_DIR ${fromEnv}`);
+    return { dir: fromEnv, ephemeral: false };
+  }
+
+  const repoSeed = path.resolve(root, "..", "..", "pack", "web-seed");
+  if (await dirHasSeed(repoSeed)) {
+    console.log(`load_pack: using repo seed ${repoSeed}`);
+    return { dir: repoSeed, ephemeral: false };
+  }
+
+  // Legacy local path (must not be present in publish tree).
+  const legacy = path.join(root, "seed");
+  if (await dirHasSeed(legacy)) {
+    console.log(`load_pack: using legacy ${legacy}`);
+    return { dir: legacy, ephemeral: false };
+  }
+
+  const source = JSON.parse(
+    await readFile(path.join(root, "seed-source.json"), "utf8"),
+  );
+  const cacheDir = path.join(root, ".data", "seed-cache");
+  const refs = [
+    process.env.ATLAS_SEED_GIT_REF,
+    process.env.VERCEL_GIT_COMMIT_REF,
+    process.env.VERCEL_GIT_COMMIT_SHA,
+    ...(source.preferredRefs ?? []),
+  ].filter(Boolean);
+
+  let lastError = null;
+  for (const ref of refs) {
+    try {
+      console.log(
+        `load_pack: fetching ${source.githubRepo}/${source.repoPath} @ ${ref}`,
+      );
+      await downloadSeedTo(
+        cacheDir,
+        source.githubRepo,
+        source.repoPath,
+        ref,
+      );
+      if (await dirHasSeed(cacheDir)) {
+        return { dir: cacheDir, ephemeral: true };
+      }
+    } catch (error) {
+      lastError = error;
+      console.warn(`load_pack: ref ${ref} failed: ${error.message ?? error}`);
+    }
+  }
+
+  throw new Error(
+    `Unable to locate pack seed (tried SEED_DIR, ${repoSeed}, GitHub refs). Last error: ${lastError?.message ?? lastError}`,
+  );
+}
+
+async function scrubEphemeralSeed(seedInfo) {
+  if (!seedInfo?.ephemeral) return;
+  try {
+    await rm(seedInfo.dir, { recursive: true, force: true });
+    console.log(`load_pack: scrubbed ephemeral seed cache ${seedInfo.dir}`);
+  } catch (error) {
+    console.warn(`load_pack: scrub failed: ${error.message ?? error}`);
+  }
+}
+
+let seedDir = null;
+let seedInfo = null;
 
 const ENTITY_COLS = [
   "entity_type",
@@ -287,9 +397,15 @@ async function loadPglite() {
   }
 }
 
-if (url !== "") {
-  await loadPostgres();
-} else {
-  console.log("load_pack: DATABASE_URL unset; loading into local PGlite");
-  await loadPglite();
+seedInfo = await resolveSeedDir();
+seedDir = seedInfo.dir;
+try {
+  if (url !== "") {
+    await loadPostgres();
+  } else {
+    console.log("load_pack: DATABASE_URL unset; loading into local PGlite");
+    await loadPglite();
+  }
+} finally {
+  await scrubEphemeralSeed(seedInfo);
 }

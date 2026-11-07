@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Export apps/web/seed JSONL from the built SQLite pack (same transform pipeline)."""
+"""Export pack/web-seed JSONL from the built SQLite pack (same transform pipeline).
+
+Output lives outside apps/web so Cursor publish-app does not pack downloadable
+seed archives into the hosted app tree.
+"""
 
 from __future__ import annotations
 
@@ -98,7 +102,7 @@ def main() -> int:
     parser.add_argument(
         "--out-dir",
         type=Path,
-        default=Path(__file__).resolve().parents[1] / "seed",
+        default=Path(__file__).resolve().parents[3] / "pack" / "web-seed",
     )
     args = parser.parse_args()
     if not args.sqlite.is_file():
