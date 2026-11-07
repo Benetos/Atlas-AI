@@ -1,0 +1,16 @@
+{
+  "pack_schema_version": 1,
+  "contract_version": 1,
+  "source_repository": "https://github.com/ApexFatality93/NMS-Handbook",
+  "source_commit_sha": "142d9ffd8078944722243398202f22cbef47cd02",
+  "source_committed_at": "2026-02-20T10:37:37-06:00",
+  "generated_at": "2026-11-07T00:15:08.290878+00:00",
+  "counts": {
+    "content_records": 4752,
+    "entities": 2597,
+    "localizations_preferred": 79731,
+    "recipe_ingredients": 4003,
+    "recipes": 2181
+  },
+  "input_manifest_sha256": "a63069b19d07c758a9f779b1ad3b57eeff759210d0d77fbb0b54b6de7a440534"
+}

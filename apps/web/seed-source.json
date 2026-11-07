@@ -1,0 +1,12 @@
+{
+  "githubRepo": "Benetos/Atlas-AI",
+  "repoPath": "pack/web-seed",
+  "files": [
+    "pack_manifest.json",
+    "entities.jsonl.gz",
+    "recipes.jsonl.gz",
+    "recipe_ingredients.jsonl.gz",
+    "content_records.jsonl.gz"
+  ],
+  "preferredRefs": ["cursor/web-companion-4e61", "main"]
+}
